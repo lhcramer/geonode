@@ -20,13 +20,17 @@
 
 import autocomplete_light
 
-from geonode.maps.models import Map, MapLayer, MapSnapshot
+from geonode.maps.models import Map, MapLayer, MapSnapshot, MapStory
 from geonode.base.admin import MediaTranslationAdmin, ResourceBaseAdminForm
 from django.contrib import admin
 
 
 class MapLayerInline(admin.TabularInline):
     model = MapLayer
+
+
+class MapChapterInline(admin.TabularInline):
+    model = Map
 
 
 class MapAdminForm(ResourceBaseAdminForm):
@@ -36,13 +40,35 @@ class MapAdminForm(ResourceBaseAdminForm):
         fields = '__all__'
 
 
+class MapStoryAdminForm(ResourceBaseAdminForm):
+
+    class Meta:
+        model = MapStory
+        fields = '__all__'
+
+
 class MapAdmin(MediaTranslationAdmin):
     inlines = [MapLayerInline, ]
     list_display_links = ('title',)
+<<<<<<< HEAD
     list_display = ('id', 'title', 'owner', 'is_published', 'featured',)
     list_filter = ('owner', 'category', 'featured', 'is_published',)
+=======
+    list_display = ('id', 'title', 'owner', 'category', 'is_published')
+    list_editable = ('category', 'is_published')
+    list_filter = ('owner', 'category',)
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
     search_fields = ('title', 'abstract', 'purpose',)
     form = MapAdminForm
+
+
+class MapStoryAdmin(MediaTranslationAdmin):
+    list_display_links = ('title',)
+    list_display = ('id', 'title', 'owner', 'category', 'is_published')
+    list_editable = ('category', 'is_published')
+    list_filter = ('owner', 'category',)
+    search_fields = ('title', 'abstract', 'purpose',)
+    form = MapStoryAdminForm
 
 
 class MapLayerAdmin(admin.ModelAdmin):
@@ -51,7 +77,11 @@ class MapLayerAdmin(admin.ModelAdmin):
     search_fields = ('map__title', 'name',)
     form = autocomplete_light.modelform_factory(MapLayer, fields='__all__')
 
+<<<<<<< HEAD
 
+=======
+admin.site.register(MapStory, MapStoryAdmin)
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 admin.site.register(Map, MapAdmin)
 admin.site.register(MapLayer, MapLayerAdmin)
 admin.site.register(MapSnapshot)

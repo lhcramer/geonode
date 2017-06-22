@@ -49,7 +49,12 @@ urlpatterns = [
     ),
     url(
         r'^list/$',
-        'get_favorites',
+        views.get_favorites,
         name='favorite_list'
+    ),
+    url(
+        r'^story/(?P<id>\d+)$',
+        views.favorite, {'subject': 'mapstory'},
+        name='add_favorite_mapstory'
     ),
 ]

@@ -42,11 +42,17 @@ from django.contrib.staticfiles.templatetags import staticfiles
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.auth import get_user_model
 from django.db.models import signals
+<<<<<<< HEAD
 from django.contrib.auth.signals import user_logged_in, user_logged_out
 from django.core.files.storage import default_storage as storage
 from django.core.files.base import ContentFile
 from django.contrib.gis.geos import GEOSGeometry
+=======
+from django.core.files import File
+from django.core.files.storage import default_storage as storage
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
+from django.core.files.base import ContentFile
 from mptt.models import MPTTModel, TreeForeignKey
 
 from polymorphic.models import PolymorphicModel
@@ -450,6 +456,12 @@ class ResourceBase(PolymorphicModel, PermissionLevelMixin, ItemBase):
     temporal_extent_end_help_text = _('time period covered by the content of the dataset (end)')
     data_quality_statement_help_text = _('general explanation of the data producer\'s knowledge about the lineage of a'
                                          ' dataset')
+
+    distribution_url_help_text = _('information about on-line sources from which the dataset, specification, or '
+                                   'community profile name and extended metadata elements can be obtained')
+
+    distribution_description_help_text = _('detailed text description of what the online resource is/does')
+
     # internal fields
     uuid = models.CharField(max_length=36)
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, blank=True, null=True, related_name='owned_resource',
@@ -501,6 +513,12 @@ class ResourceBase(PolymorphicModel, PermissionLevelMixin, ItemBase):
     supplemental_information = models.TextField(_('supplemental information'), default=DEFAULT_SUPPLEMENTAL_INFORMATION,
                                                 help_text=_('any other descriptive information about the dataset'))
 
+    # Section 6
+    distribution_url = models.TextField(_('distribution URL'), blank=True, null=True,
+                                        help_text=distribution_url_help_text)
+    distribution_description = models.TextField(_('distribution description'), blank=True, null=True,
+                                                help_text=distribution_description_help_text)
+
     # Section 8
     data_quality_statement = models.TextField(_('data quality statement'), blank=True, null=True,
                                               help_text=data_quality_statement_help_text)
@@ -542,10 +560,8 @@ class ResourceBase(PolymorphicModel, PermissionLevelMixin, ItemBase):
     popular_count = models.IntegerField(default=0)
     share_count = models.IntegerField(default=0)
 
-    featured = models.BooleanField(_("Featured"), default=False,
-                                   help_text=_('Should this resource be advertised in home page?'))
-    is_published = models.BooleanField(_("Is Published"), default=True,
-                                       help_text=_('Should this resource be published and searchable?'))
+    featured = models.BooleanField(default=False, help_text=_('Should this resource be advertised in home page?'))
+    is_published = models.BooleanField(default=False, help_text=_('Should this resource be published and searchable?'))
 
     # fields necessary for the apis
     thumbnail_url = models.TextField(null=True, blank=True)
@@ -785,8 +801,13 @@ class ResourceBase(PolymorphicModel, PermissionLevelMixin, ItemBase):
 
             storage.save(upload_path, ContentFile(image))
 
+<<<<<<< HEAD
             url_path = os.path.join(settings.MEDIA_URL, upload_to, filename).replace('\\', '/')
             url = urljoin(settings.SITEURL, url_path)
+=======
+        url_path = os.path.join(settings.MEDIA_URL, upload_to, filename)
+        url = urljoin(settings.SITEURL, url_path)
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
             Link.objects.get_or_create(resource=self,
                                        url=url,
@@ -1035,7 +1056,16 @@ def rating_post_save(instance, *args, **kwargs):
     """
     Used to fill the average rating field on OverallRating change.
     """
-    ResourceBase.objects.filter(id=instance.object_id).update(rating=instance.rating)
+
+    # MapStory change: This was changed from an update statement to a filter so that the save method could be run and
+    # the post-save signals would be executed, specifically the django-haystack post-save signal.
+
+    objs = ResourceBase.objects.filter(id=instance.object_id)
+
+    for obj in objs:
+        obj.rating = instance.rating
+        obj.save()
+
 
 
 signals.post_save.connect(rating_post_save, sender=OverallRating)

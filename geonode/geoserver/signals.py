@@ -36,9 +36,15 @@ from geonode.geoserver.helpers import geoserver_upload
 from geonode.geoserver.helpers import create_gs_thumbnail
 from geonode.base.models import ResourceBase
 from geonode.base.models import Link
+<<<<<<< HEAD
+=======
+from geonode.maps.models import MapStory
+from geonode.layers.utils import create_thumbnail
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 from geonode.people.models import Profile
 
 from geoserver.layer import Layer as GsLayer
+from mapstory.search.utils import update_es_index
 
 logger = logging.getLogger("geonode.geoserver.signals")
 
@@ -272,9 +278,15 @@ def geoserver_post_save(instance, sender, **kwargs):
         gs_store_type = gs_resource.store.type.lower() if gs_resource.store.type else None
         geogig_repository = gs_resource.store.connection_parameters.get('geogig_repository', '')
         geogig_repo_name = geogig_repository.replace('geoserver://', '')
+<<<<<<< HEAD
 
         if gs_store_type == 'geogig' and geogig_repo_name:
 
+=======
+
+        if gs_store_type == 'geogig' and geogig_repo_name:
+
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
             repo_url = '{url}geogig/repos/{repo_name}'.format(
                 url=ogc_server_settings.public_url,
                 repo_name=geogig_repo_name)
@@ -371,8 +383,31 @@ def geoserver_post_save(instance, sender, **kwargs):
                                )
                                )
 
+<<<<<<< HEAD
     logger.info("Creating Thumbnail for Layer [%s]" % (instance.typename))
     create_gs_thumbnail(instance, overwrite=False)
+=======
+    params = {
+        'layers': instance.typename.encode('utf-8'),
+        'format': 'image/png8',
+        'width': 200,
+        'height': 150,
+        'TIME': '-99999999999-01-01T00:00:00.0Z/99999999999-01-01T00:00:00.0Z'
+    }
+
+    # Avoid using urllib.urlencode here because it breaks the url.
+    # commas and slashes in values get encoded and then cause trouble
+    # with the WMS parser.
+    p = "&".join("%s=%s" % item for item in params.items())
+
+    thumbnail_remote_url = ogc_server_settings.PUBLIC_LOCATION + \
+        "wms/reflect?" + p
+
+    thumbnail_create_url = ogc_server_settings.LOCATION + \
+        "wms/reflect?" + p
+
+    create_thumbnail(instance, thumbnail_remote_url, thumbnail_create_url, ogc_client=http_client)
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
     legend_url = ogc_server_settings.PUBLIC_LOCATION + \
         'wms?request=GetLegendGraphic&format=image/png&WIDTH=20&HEIGHT=20&LAYER=' + \
@@ -471,6 +506,13 @@ def geoserver_post_save(instance, sender, **kwargs):
     from geonode.layers.models import Layer
     catalogue_post_save(instance, Layer)
 
+    try:
+        # update the elastic search index for the object after post_save triggers have fired.
+        update_es_index(sender, sender.objects.get(id=instance.id))
+        update_es_index(MapStory, MapStory.objects.get(id=instance.story.id))
+    except:
+        pass
+
 
 def geoserver_pre_save_maplayer(instance, sender, **kwargs):
     # If this object was saved via fixtures,
@@ -479,10 +521,11 @@ def geoserver_pre_save_maplayer(instance, sender, **kwargs):
         return
 
     try:
-        instance.local = isinstance(
-            gs_catalog.get_layer(
-                instance.name),
-            GsLayer)
+        if instance.ows_url is not None and len(instance.ows_url) > 0:
+            instance.local = isinstance(
+                gs_catalog.get_layer(
+                    instance.name),
+                GsLayer)
     except EnvironmentError as e:
         if e.errno == errno.ECONNREFUSED:
             msg = 'Could not connect to catalog to verify if layer %s was local' % instance.name
@@ -497,4 +540,66 @@ def geoserver_pre_save_maplayer(instance, sender, **kwargs):
 
 def geoserver_post_save_map(instance, sender, **kwargs):
     instance.set_missing_info()
+<<<<<<< HEAD
     create_gs_thumbnail(instance, overwrite=False)
+=======
+    local_layers = []
+    for layer in instance.layers:
+        if layer.local:
+            local_layers.append(layer.name)
+
+    # If the map does not have any local layers, do not create the thumbnail.
+    if len(local_layers) > 0:
+        params = {
+            'layers': ",".join(local_layers).encode('utf-8'),
+            'format': 'image/png8',
+            'width': 200,
+            'height': 150,
+        }
+
+        # Add the bbox param only if the bbox is different to [None, None,
+        # None, None]
+        if None not in instance.bbox:
+            # The bbox min and max y are switched for some layers
+            # This ensures a bbox error doesn't occur
+            bbox_list = [float(i) for i in instance.bbox_string.split(',')]
+            print bbox_list
+            new_bbox = None
+            bbox_error = bbox_list[1] > bbox_list[3] or bbox_list[0] > bbox_list[2]
+            if bbox_error == True:
+                new_bbox_list = [
+                  min(bbox_list[0], bbox_list[2]),
+                  min(bbox_list[1], bbox_list[3]),
+                  max(bbox_list[0], bbox_list[2]),
+                  max(bbox_list[1], bbox_list[3])
+                ]
+                new_bbox = ','.join([str(i) for i in new_bbox_list])
+                params['bbox'] = new_bbox
+            else:
+                params['bbox'] = instance.bbox_string
+
+        # Avoid using urllib.urlencode here because it breaks the url.
+        # commas and slashes in values get encoded and then cause trouble
+        # with the WMS parser.
+        p = "&".join("%s=%s" % item for item in params.items())
+
+        thumbnail_remote_url = ogc_server_settings.PUBLIC_LOCATION + \
+            "wms/reflect?" + p
+
+        thumbnail_create_url = ogc_server_settings.LOCATION + \
+            "wms/reflect?" + p
+
+        create_thumbnail(instance, thumbnail_remote_url, thumbnail_create_url, check_bbox=False)
+
+        #Assuming map thumbnail was created successfully, updating Story object here
+        if instance.chapter_index == 0:
+            instance.story.update_thumbnail(instance)
+    try:
+        # update the elastic search index for the object after post_save triggers have fired.
+        # TODO: this should be done asynchronously!
+
+        update_es_index(sender, sender.objects.get(id=instance.id))
+        update_es_index(MapStory, MapStory.objects.get(id=instance.story.id))
+    except:
+        pass
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b

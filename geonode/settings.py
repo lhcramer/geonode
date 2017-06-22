@@ -268,21 +268,32 @@ GEONODE_APPS = (
     'geonode.api',
     'geonode.groups',
     'geonode.services',
+<<<<<<< HEAD
 
     # QGIS Server Apps
     # 'geonode_qgis_server',
 
+=======
+    # GeoNode Contrib Apps
+    # 'geonode.contrib.dynamic',
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
     # GeoServer Apps
     # Geoserver needs to come last because
     # it's signals may rely on other apps' signals.
     'geonode.geoserver',
     'geonode.upload',
+<<<<<<< HEAD
     'geonode.tasks',
 
+=======
+    'geonode.tasks'
+    'actstream',
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 )
 
 GEONODE_CONTRIB_APPS = (
     # GeoNode Contrib Apps
+<<<<<<< HEAD
     # 'geonode.contrib.dynamic',
     # 'geonode.contrib.exif',
     # 'geonode.contrib.favorite',
@@ -291,6 +302,17 @@ GEONODE_CONTRIB_APPS = (
     # 'geonode.contrib.nlp',
     # 'geonode.contrib.slack',
     'geonode.contrib.metadataxsl',
+=======
+    'geonode.contrib.dynamic',
+    'geonode.contrib.exif',
+    'geonode.contrib.favorite',
+    'geonode.contrib.geogig',
+    'geonode.contrib.geosites',
+    'geonode.contrib.nlp',
+    'geonode.contrib.slack',
+    'geonode.contrib.metadataxsl'
+    'geonode.contrib.collections'
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 )
 
 # Uncomment the following line to enable contrib apps
@@ -347,8 +369,11 @@ INSTALLED_APPS = (
     'avatar',
     'dialogos',
     'agon_ratings',
+<<<<<<< HEAD
+=======
+    'notification',
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
     'announcements',
-    'actstream',
     'user_messages',
     'tastypie',
     'polymorphic',
@@ -729,7 +754,7 @@ DEFAULT_MAP_CENTER = (0, 0)
 # How tightly zoomed should newly created maps be?
 # 0 = entire world;
 # maximum zoom is between 12 and 15 (for Google Maps, coverage varies by area)
-DEFAULT_MAP_ZOOM = 0
+DEFAULT_MAP_ZOOM = 3
 
 ALT_OSM_BASEMAPS = os.environ.get('ALT_OSM_BASEMAPS', False)
 CARTODB_BASEMAPS = os.environ.get('CARTODB_BASEMAPS', False)

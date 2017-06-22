@@ -147,6 +147,7 @@ if activity:
     signals.post_delete.connect(activity_post_modify_object, sender=Map)
 
 
+<<<<<<< HEAD
 def notification_post_save_resource(instance, sender, created, **kwargs):
     """ Send a notification when a layer, map or document is created or
     updated
@@ -189,6 +190,46 @@ for resource in (Layer, Map, Document):
     signals.post_delete.connect(notification_post_delete_resource, sender=resource)
 
 signals.post_save.connect(comment_post_save, sender=Comment)
+=======
+if notification_app:
+
+    def notification_post_save_resource(instance, sender, created, **kwargs):
+        """ Send a notification when a layer, map or document is created or
+        updated
+        """
+        notice_type_label = '%s_created' if created else '%s_updated'
+        notice_type_label = notice_type_label % instance.class_name.lower()
+        recipients = get_notification_recipients(notice_type_label)
+        notification.send(recipients, notice_type_label, {'resource': instance})
+
+        send_queued_notifications.delay()
+
+    def notification_post_delete_resource(instance, sender, **kwargs):
+        """ Send a notification when a layer, map or document is deleted
+        """
+        notice_type_label = '%s_deleted' % instance.class_name.lower()
+        recipients = get_notification_recipients(notice_type_label)
+        notification.send(recipients, notice_type_label, {'resource': instance})
+        send_queued_notifications.delay()
+    
+    def get_notification_recipients(notice_type_label, exclude_user=None):
+        """ Get notification recipients
+        """
+        recipients_ids = NoticeSetting.objects \
+            .filter(notice_type__label=notice_type_label, send=True) \
+            .values('user')
+        profiles = Profile.objects.filter(id__in=recipients_ids)
+        if exclude_user:
+            profiles.exclude(username=exclude_user.username)
+        return profiles
+
+    # signals
+    # layer/map/document notifications
+    for resource in (Layer, Map, Document):
+        signals.post_save.connect(notification_post_save_resource, sender=resource)
+        signals.post_delete.connect(notification_post_delete_resource, sender=resource)
+
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
 # rating notifications
 if ratings and has_notifications:

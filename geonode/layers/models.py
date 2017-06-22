@@ -179,7 +179,9 @@ class Layer(ResourceBase):
         if self.is_remote:
             return self.service.base_url
         else:
-            return settings.OGC_SERVER['default']['PUBLIC_LOCATION'] + "wms"
+            return '{0}{1}/{2}/wms'.format(settings.OGC_SERVER['default']['PUBLIC_LOCATION'],
+                                             self.workspace,
+                                             self.name)
 
     @property
     def ptype(self):
@@ -261,6 +263,7 @@ class Layer(ResourceBase):
             ('change_layer_data', 'Can edit layer data'),
             ('change_layer_style', 'Can change layer style'),
         )
+        verbose_name_plural = 'StoryLayers'
 
     # Permission Level Constants
     # LEVEL_NONE inherited

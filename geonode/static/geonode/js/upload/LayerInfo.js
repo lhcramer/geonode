@@ -175,7 +175,6 @@ define(function (require, exports) {
         else {
             perm = permissionsString('#permission_form','layers');
         }
-
         if (geogig_enabled) {
             geogig_store = $('#' + base_name + '\\:geogig_store').val();
             geogig = $('#' + base_name + '\\:geogig_toggle').is(':checked') && geogig_store.length != 0;
@@ -530,7 +529,6 @@ define(function (require, exports) {
             }
         });
     };
-
     LayerInfo.prototype.setupGeogigDropdown = function(selector){
         function format(item){return item.name;};
         $(selector).select2({
@@ -551,15 +549,13 @@ define(function (require, exports) {
            }
           });
     }
-
     /** Function to display the layers collected from the files
      * selected for uploading
      *
      *  @params {file_queue}
      *  @returns {string}
      */
-    LayerInfo.prototype.display = function (file_queue) {
-
+    LayerInfo.prototype.display = function (file_queue, index) {
         var layerTemplate = _.template($('#layerTemplate').html()),
             li = layerTemplate({
                 name: this.name,
@@ -569,6 +565,7 @@ define(function (require, exports) {
                 geogig: geogig_enabled,
                 time: time_enabled,
 				mosaic: mosaic_enabled
+                index: index
             });
         file_queue.append(li);
         this.errors = this.collectErrors();
@@ -645,8 +642,13 @@ define(function (require, exports) {
         $('#' + this.name + '\\:geogig_toggle').on('change', this.doGeoGigToggle);
 
         // Add values to the geogig store dropdown and hide.
+<<<<<<< HEAD
         this.setupGeogigDropdown($('#' + this.name.split('.')[0] + '\\:geogig_store'));
         $("#s2id_" + this.name + "\\:geogig_store").hide()
+=======
+        this.setupGeogigDropdown($('#' + this.main.name.split('.')[0] + '\\:geogig_store'));
+        $("#s2id_" + this.name + "\\:geogig_store").hide();
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
         return li;
     };

@@ -18,6 +18,7 @@
 #
 #########################################################################
 
+import taggit
 import autocomplete_light
 
 from fields import MultiThesauriField
@@ -42,7 +43,7 @@ from django.utils.encoding import (
 from bootstrap3_datetime.widgets import DateTimePicker
 from modeltranslation.forms import TranslationModelForm
 
-from geonode.base.models import TopicCategory, Region
+from geonode.base.models import TopicCategory, Region, ResourceBase
 from geonode.people.models import Profile
 
 
@@ -368,6 +369,7 @@ class ResourceBaseForm(TranslationModelForm):
             'detail_url'
             )
 
+<<<<<<< HEAD
 
 class ValuesListField(forms.Field):
 
@@ -384,3 +386,14 @@ class ValuesListField(forms.Field):
         self.validate(value)
         self.run_validators(value)
         return value
+=======
+# A form for just keywords
+class KeywordsForm(forms.ModelForm):
+    #keywords = taggit.forms.TagField(
+    #    required=False,
+    #    help_text=_("A space or comma-separated list of keywords"))
+
+    class Meta:
+        model = ResourceBase
+        fields = ['keywords']
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b

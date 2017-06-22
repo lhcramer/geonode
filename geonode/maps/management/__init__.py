@@ -17,3 +17,56 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 #########################################################################
+<<<<<<< HEAD
+=======
+
+from django.conf import settings
+from django.db.models import signals
+from django.utils.translation import ugettext_noop as _
+import logging
+logger = logging.getLogger(__name__)
+
+if "notification" in settings.INSTALLED_APPS:
+    import notification
+
+    if hasattr(notification, 'models'):
+        def create_notice_types(app, created_models, verbosity, **kwargs):
+            notification.models.NoticeType.create(
+                "map_created",
+                _("Map Created"),
+                _("A Map was created"))
+            notification.models.NoticeType.create(
+                "map_updated",
+                _("Map Updated"),
+                _("A Map was updated"))
+            notification.models.NoticeType.create(
+                "map_deleted",
+                _("Map Deleted"),
+                _("A Map was deleted"))
+            notification.models.NoticeType.create(
+                "map_comment",
+                _("Comment on MapStory"),
+                _("A MapStory was commented on"))
+            notification.models.NoticeType.create(
+                "map_rated",
+                _("Rating for MapStory"),
+                _("A rating was given to a MapStory"))
+            notification.models.NoticeType.create(
+                "map_favorited",
+                _("MapStory favorited"),
+                _("A MapStory was favorited"))
+            notification.models.NoticeType.create(
+                "map_flagged",
+                _("MapStory flagged"),
+                _("A flag was given to a MapStory"))
+
+
+        signals.post_syncdb.connect(
+            create_notice_types,
+            sender=notification.models)
+        logger.info(
+            "Notifications Configured for geonode.maps.management.commands")
+else:
+    logger.info(
+        "Skipping creation of NoticeTypes for geonode.maps.management.commands, since notification app was not found.")
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b

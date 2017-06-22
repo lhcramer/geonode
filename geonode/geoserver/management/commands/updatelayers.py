@@ -25,7 +25,10 @@ from geonode.geoserver.helpers import gs_slurp
 import traceback
 import sys
 import ast
+<<<<<<< HEAD
 
+=======
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
 class Command(BaseCommand):
     help = 'Update the GeoNode application with data from GeoServer'
@@ -85,7 +88,11 @@ class Command(BaseCommand):
             dest="permissions",
             default="None",
             help="Permissions to apply to each layer"))
+<<<<<<< HEAD
 
+=======
+            
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
     def handle(self, **options):
         ignore_errors = options.get('ignore_errors')
         skip_unadvertised = options.get('skip_unadvertised')
@@ -98,7 +105,11 @@ class Command(BaseCommand):
         filter = options.get('filter')
         store = options.get('store')
         permissions = ast.literal_eval(options.get('permissions'))
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
         if verbosity > 0:
             console = sys.stdout
         else:
@@ -115,8 +126,12 @@ class Command(BaseCommand):
             skip_unadvertised=skip_unadvertised,
             skip_geonode_registered=skip_geonode_registered,
             remove_deleted=remove_deleted,
+<<<<<<< HEAD
             permissions=permissions,
             execute_signals=True)
+=======
+            permissions=permissions)
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
         if verbosity > 1:
             print "\nDetailed report of failures:"

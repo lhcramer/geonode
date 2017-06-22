@@ -10,7 +10,12 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+<<<<<<< HEAD:geonode/maps/migrations/24_initial.py
         ('base', '__first__'),
+=======
+        ('notification', '0001_initial'),
+        ('people', '0002_add_mapstory_specific_fields'),
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b:geonode/maps/migrations/0001_initial.py
     ]
 
     operations = [

@@ -56,6 +56,7 @@ except ImportError:
 
 DEFAULT_TITLE = ""
 DEFAULT_ABSTRACT = ""
+DEFAULT_VIEWER_PLAYBACKMODE = "Instant"
 
 INVALID_PERMISSION_MESSAGE = _("Invalid permission level.")
 
@@ -327,11 +328,22 @@ class GXPMapBase(object):
                 index += 1
                 sources[index] = remote_source
 
+        layer_owner = ""
+
+        if hasattr(self,"poc") and hasattr(self.poc,"name_long"):
+            layer_owner = self.poc.name_long
+
+        layer_owner = ""
+
+        if hasattr(self,"poc") and hasattr(self.poc,"name_long"):
+            layer_owner = self.poc.name_long
+
         config = {
             'id': self.id,
             'about': {
                 'title': self.title,
-                'abstract': self.abstract
+                'abstract': self.abstract,
+                'owner': layer_owner
             },
             'aboutUrl': '../about',
             'defaultSourceType': "gxp_wmscsource",
@@ -341,7 +353,7 @@ class GXPMapBase(object):
                 'center': [self.center_x, self.center_y],
                 'projection': self.projection,
                 'zoom': self.zoom
-            }
+            },
         }
 
         if any(layers):

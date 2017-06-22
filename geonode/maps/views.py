@@ -42,11 +42,12 @@ from django.db.models import F
 from django.views.decorators.clickjacking import xframe_options_exempt
 
 from geonode.layers.models import Layer
-from geonode.maps.models import Map, MapLayer, MapSnapshot
+from geonode.maps.models import Map, MapLayer, MapSnapshot, MapStory
 from geonode.layers.views import _resolve_layer
 from geonode.utils import forward_mercator, llbbox_to_mercator
 from geonode.utils import DEFAULT_TITLE
 from geonode.utils import DEFAULT_ABSTRACT
+from geonode.utils import DEFAULT_VIEWER_PLAYBACKMODE
 from geonode.utils import default_map_config
 from geonode.utils import resolve_object
 from geonode.utils import layer_from_viewer_config
@@ -61,6 +62,8 @@ from geonode.people.forms import ProfileForm
 from geonode.utils import num_encode, num_decode
 from geonode.utils import build_social_links
 import urlparse
+
+from geonode.base.forms import KeywordsForm
 
 if 'geonode.geoserver' in settings.INSTALLED_APPS:
     # FIXME: The post service providing the map_status object
@@ -100,6 +103,17 @@ def _resolve_map(request, id, permission='base.change_resourcebase',
     return resolve_object(request, Map, {key: id}, permission=permission,
                           permission_msg=msg, **kwargs)
 
+def _resolve_story(request, id, permission='base.change_resourcebase',
+                 msg=_PERMISSION_MSG_GENERIC, **kwargs):
+    '''
+    Resolve the Map by the provided typename and check the optional permission.
+    '''
+    if id.isdigit():
+        key = 'pk'
+    else:
+        key = 'urlsuffix'
+    return resolve_object(request, MapStory, {key: id}, permission=permission,
+                          permission_msg=msg, **kwargs)
 
 # BASIC MAP VIEWS #
 
@@ -128,6 +142,23 @@ def map_detail(request, mapid, snapshot=None, template='maps/map_detail.html'):
     config = json.dumps(config)
     layers = MapLayer.objects.filter(map=map_obj.id)
 
+    if request.method == "POST":
+        keywords_form = KeywordsForm(request.POST, instance=map_obj)
+
+        if keywords_form.is_valid():
+            new_keywords = keywords_form.cleaned_data['keywords']
+            map_obj.keywords.clear()
+            map_obj.keywords.add(*new_keywords)
+            map_obj.save()
+            return HttpResponseRedirect(
+                reverse(
+                    'map_detail',
+                    args=(
+                        map_obj.id,
+                    )))
+    else:
+        keywords_form = KeywordsForm(instance=map_obj)
+
     context_dict = {
         'config': config,
         'resource': map_obj,
@@ -135,6 +166,7 @@ def map_detail(request, mapid, snapshot=None, template='maps/map_detail.html'):
         'perms_list': get_perms(request.user, map_obj.get_self_resource()),
         'permissions_json': _perms_info_json(map_obj),
         "documents": get_related_documents(map_obj),
+        "keywords_form": keywords_form,
     }
 
     context_dict["preview"] = getattr(
@@ -340,10 +372,9 @@ def map_embed(
         'config': json.dumps(config)
     }))
 
-
 # MAPS VIEWER #
 
-
+@xframe_options_exempt
 def map_view(request, mapid, snapshot=None, template='maps/map_view.html'):
     """
     The view that returns the map composer opened to
@@ -370,6 +401,23 @@ def map_view(request, mapid, snapshot=None, template='maps/map_view.html'):
             '')
     }))
 
+@xframe_options_exempt
+def mapstory_view(request, mapid, snapshot=None, template='maps/map_view.html'):
+    """
+    The view that returns the map composer opened to
+    the map with the given map ID.
+    """
+    map_obj = _resolve_story(request, mapid, 'base.view_resourcebase', _PERMISSION_MSG_VIEW)
+
+    if snapshot is None:
+        config = map_obj.viewer_json(request.user)
+    else:
+        config = snapshot_config(snapshot, map_obj, request.user)
+
+    return render_to_response(template, RequestContext(request, {
+        'config': json.dumps(config),
+        'map': map_obj
+    }))
 
 def map_view_js(request, mapid):
     map_obj = _resolve_map(request, mapid, 'base.view_resourcebase', _PERMISSION_MSG_VIEW)
@@ -428,6 +476,7 @@ def map_json(request, mapid, snapshot=None):
             )
 
 
+<<<<<<< HEAD
 def map_edit(request, mapid, snapshot=None, template='maps/map_edit.html'):
     """
     The view that returns the map composer opened to
@@ -454,6 +503,33 @@ def map_edit(request, mapid, snapshot=None, template='maps/map_edit.html'):
             'LAYER_PREVIEW_LIBRARY',
             '')
     }))
+=======
+def save_story(request, storyid):
+    if not request.user.is_authenticated():
+        return HttpResponse(
+                _PERMISSION_MSG_LOGIN,
+                status=401,
+                content_type="text/plain"
+        )
+
+    story_obj = MapStory.objects.get(id=storyid)
+    if not request.user.has_perm('change_resourcebase', story_obj.get_self_resource()):
+        return HttpResponse(
+                _PERMISSION_MSG_SAVE,
+                status=401,
+                content_type="text/plain"
+        )
+
+    try:
+        story_obj.update_from_viewer(request.body)
+        return HttpResponse(json.dumps(story_obj.viewer_json(request.user)))
+    except ValueError as e:
+        return HttpResponse(
+                "The server could not understand the request." + str(e),
+                content_type="text/plain",
+                status=400
+        )
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
 
 # NEW MAPS #
@@ -463,7 +539,6 @@ def clean_config(conf):
     if isinstance(conf, basestring):
         config = json.loads(conf)
         config_extras = [
-            "tools",
             "rest",
             "homeUrl",
             "localGeoServerBaseUrl",
@@ -481,7 +556,42 @@ def clean_config(conf):
         return conf
 
 
+<<<<<<< HEAD
 def new_map(request, template='maps/map_new.html'):
+=======
+def new_story_json(request):
+    if not request.user.is_authenticated():
+        return HttpResponse(
+                'You must be logged in to save new maps',
+                content_type="text/plain",
+                status=401
+        )
+    story_obj = MapStory(owner=request.user)
+    story_obj.save()
+    story_obj.set_default_permissions()
+
+    # If the body has been read already, use an empty string.
+    # See https://github.com/django/django/commit/58d555caf527d6f1bdfeab14527484e4cca68648
+    # for a better exception to catch when we move to Django 1.7.
+    try:
+        body = request.body
+    except Exception:
+        body = ''
+
+    try:
+        story_obj.update_from_viewer(body)
+    except ValueError as e:
+        return HttpResponse(str(e), status=400)
+    else:
+        return HttpResponse(
+                json.dumps({'id': story_obj.id}),
+                status=200,
+                content_type='application/json'
+        )
+
+
+def new_map(request, template='maps/map_view.html'):
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
     config = new_map_config(request)
     context_dict = {
         'config': config,
@@ -553,6 +663,7 @@ def new_map_config(request):
     default map configuration is used.  If copy is specified
     and the map specified does not exist a 404 is returned.
     '''
+<<<<<<< HEAD
     DEFAULT_MAP_CONFIG, DEFAULT_BASE_LAYERS = default_map_config(request)
 
     if 'access_token' in request.session:
@@ -560,12 +671,17 @@ def new_map_config(request):
     else:
         access_token = None
 
+=======
+    DEFAULT_MAP_CONFIG, DEFAULT_BASE_LAYERS = default_map_config()
+    map_obj = None
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
     if request.method == 'GET' and 'copy' in request.GET:
         mapid = request.GET['copy']
         map_obj = _resolve_map(request, mapid, 'base.view_resourcebase')
 
         map_obj.abstract = DEFAULT_ABSTRACT
         map_obj.title = DEFAULT_TITLE
+        map_obj.viewer_playbackmode = DEFAULT_VIEWER_PLAYBACKMODE
         if request.user.is_authenticated():
             map_obj.owner = request.user
 
@@ -649,8 +765,13 @@ def new_map_config(request):
                         url = layer.ows_url
                     maplayer = MapLayer(
                         map=map_obj,
+<<<<<<< HEAD
                         name=layer.typename,
                         ows_url=url,
+=======
+                        name=layer.name,
+                        ows_url=layer.ows_url,
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
                         # use DjangoJSONEncoder to handle Decimal values
                         layer_params=json.dumps(config, cls=DjangoJSONEncoder),
                         visibility=True

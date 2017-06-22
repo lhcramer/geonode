@@ -227,4 +227,8 @@ class ResourceBaseAdminForm(autocomplete_light.ModelForm):
     # which prevents app startup. Therefore, we defer setting the widget until
     # after that's done.
     keywords = TaggitField(required=False)
+<<<<<<< HEAD
     keywords.widget = TaggitWidget(autocomplete='HierarchicalKeywordAutocomplete')
+=======
+    keywords.widget = TaggitWidget(autocomplete='TagAutocomplete')
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b

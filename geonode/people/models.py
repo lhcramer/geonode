@@ -19,7 +19,7 @@
 #########################################################################
 
 from django.db import models
-from django.utils.translation import ugettext as _
+from django.utils.translation import ugettext_lazy as _
 from django.core.urlresolvers import reverse
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.contrib import auth
@@ -27,6 +27,8 @@ from django.db.models import signals
 from django.conf import settings
 
 from taggit.managers import TaggableManager
+from avatar.templatetags.avatar_tags import avatar_url
+from avatar.models import Avatar
 
 from geonode.base.enumerations import COUNTRIES
 from geonode.groups.models import GroupProfile
@@ -36,23 +38,41 @@ from account.models import EmailAddress
 
 from .utils import format_address
 
+<<<<<<< HEAD
 
 class ProfileUserManager(UserManager):
     def get_by_natural_key(self, username):
         return self.get(username__iexact=username)
 
 
+=======
+if 'notification' in settings.INSTALLED_APPS:
+    from notification import models as notification
+    
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 class Profile(AbstractUser):
 
     """Fully featured Geonode user"""
+    # Mapstory stuff
+    Volunteer_Technical_Community = models.BooleanField(_('Volunteer Technical Community'),
+        help_text=_('indicates membership of the Volunteer Technical Comunity'),
+        default=False)
+    social_twitter = models.CharField(_('Twitter Handle'), help_text=_('Provide your Twitter username'), max_length=255, null=True, blank=True)
+    social_facebook = models.CharField(_('Facebook Profile'), help_text=_('Provide your Facebook username'), max_length=255, null=True, blank=True)
+    social_github = models.CharField(_('GitHub Profile'), help_text=_('Provide your GitHub username'), max_length=255, null=True, blank=True)
+    social_linkedin = models.CharField(_('LinkedIn Profile'), help_text=_('Provide your LinkedIn username'), max_length=255, null=True, blank=True)
+    education = models.TextField(_('Education'), null=True, blank=True, help_text=_('Provide some details about your Education and Background'))
+    expertise = models.TextField(_('Expertise'), null=True, blank=True, help_text=_('Provide some details about your Expertise'))
+    digest = models.BooleanField(_('Monthly email digest'), help_text=_('Subscribe to MapStory monthly email digest'), default=False)
 
+    # End mapstory stuff
     organization = models.CharField(
         _('Organization Name'),
         max_length=255,
         blank=True,
         null=True,
         help_text=_('name of the responsible organization'))
-    profile = models.TextField(_('Profile'), null=True, blank=True, help_text=_('introduce yourself'))
+    profile = models.TextField(_('Profile'), null=True, blank=True, help_text=_('Introduce yourself in under 200 characters'))
     position = models.CharField(
         _('Position Name'),
         max_length=255,
@@ -74,7 +94,7 @@ class Profile(AbstractUser):
         max_length=255,
         blank=True,
         null=True,
-        help_text=_('city of the location'))
+        help_text=_('What city do you spend most of your time in?'))
     area = models.CharField(
         _('Administrative Area'),
         max_length=255,
@@ -92,10 +112,11 @@ class Profile(AbstractUser):
         max_length=3,
         blank=True,
         null=True,
-        help_text=_('country of the physical address'))
+        help_text=_('What country do you spend most of your time in?'))
     keywords = TaggableManager(_('keywords'), blank=True, help_text=_(
         'commonly used word(s) or formalised word(s) or phrase(s) used to describe the subject \
-            (space or comma-separated'))
+            (space or comma-separated'), related_name='profile_keywords')
+    avatar_100 = models.CharField(max_length=512, blank=True, null=True)
 
     def get_absolute_url(self):
         return reverse('profile_detail', args=[self.username, ])
@@ -120,6 +141,9 @@ class Profile(AbstractUser):
         Returns a list of the Profile's keywords.
         """
         return [kw.name for kw in self.keywords.all()]
+
+    def keyword_slug_list(self):
+        return [kw.slug for kw in self.keywords.all()]
 
     @property
     def name_long(self):
@@ -159,6 +183,7 @@ def profile_post_save(instance, sender, **kwargs):
             defaults={'email': instance.email, 'verified': False})
         if not created:
             EmailAddress.objects.filter(user=instance, primary=True).update(email=instance.email)
+    Profile.objects.filter(id=instance.id).update(avatar_100=avatar_url(instance, 100))
 
 
 def email_post_save(instance, sender, **kw):
@@ -179,11 +204,20 @@ def profile_signed_up(user, form, **kwargs):
     send_notification(staff, "account_approve", {"from_user": user})
 
 
+def avatar_post_save(instance, sender, **kw):
+    Profile.objects.filter(id=instance.user.id).update(avatar_100=avatar_url(instance.user, 100))
+
+
 signals.pre_save.connect(profile_pre_save, sender=Profile)
 signals.post_save.connect(profile_post_save, sender=Profile)
 signals.post_save.connect(email_post_save, sender=EmailAddress)
+<<<<<<< HEAD
 
 if has_notifications and 'account' in settings.INSTALLED_APPS and getattr(settings, 'ACCOUNT_APPROVAL_REQUIRED', False):
     from account import signals as s
     from account.forms import SignupForm
     s.user_signed_up.connect(profile_signed_up, sender=SignupForm)
+=======
+signals.post_save.connect(avatar_post_save, sender=Avatar)
+
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b

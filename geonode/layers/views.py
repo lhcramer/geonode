@@ -67,7 +67,13 @@ from geonode.utils import build_social_links
 from geonode.geoserver.helpers import cascading_delete, gs_catalog
 from geonode.geoserver.helpers import ogc_server_settings
 
+<<<<<<< HEAD
 from geonode.base.models import Thesaurus
+=======
+from geonode.base.forms import KeywordsForm
+
+CONTEXT_LOG_FILE = None
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
 if 'geonode.geoserver' in settings.INSTALLED_APPS:
     from geonode.geoserver.helpers import _render_thumbnail
@@ -229,14 +235,20 @@ def layer_detail(request, layername, template='layers/layer_detail.html'):
     # assert False, str(layer_bbox)
     config = layer.attribute_config()
 
+    # TODO (Mapstory): This has been commented out to force the client to make a getCapabilities request in order
+    # to pull in the time dimension data.  Ideally we would cache time data just like the srs and bbox data to prevent
+    # making the getCapabilities request.
+
     # Add required parameters for GXP lazy-loading
-    layer_bbox = layer.bbox
-    bbox = [float(coord) for coord in list(layer_bbox[0:4])]
-    config["srs"] = getattr(settings, 'DEFAULT_MAP_CRS', 'EPSG:900913')
-    config["bbox"] = bbox if config["srs"] != 'EPSG:900913' \
-        else llbbox_to_mercator([float(coord) for coord in bbox])
-    config["title"] = layer.title
-    config["queryable"] = True
+    #layer_bbox = layer.bbox
+    #bbox = [float(coord) for coord in list(layer_bbox[0:4])]
+    #srid = layer.srid
+
+    # Transform WGS84 to Mercator.
+    #config["srs"] = srid if srid != "EPSG:4326" else "EPSG:900913"
+    #config["bbox"] = llbbox_to_mercator([float(coord) for coord in bbox])
+    #config["title"] = layer.title
+    #config["queryable"] = True
 
     if layer.storeType == "remoteStore":
         service = layer.service
@@ -252,7 +264,7 @@ def layer_detail(request, layername, template='layers/layer_detail.html'):
             source_params=json.dumps(source_params))
     else:
         maplayer = GXPLayer(
-            name=layer.typename,
+            name=layer.name,
             ows_url=layer.ows_url,
             layer_params=json.dumps(config))
 
@@ -296,6 +308,17 @@ def layer_detail(request, layername, template='layers/layer_detail.html'):
             granules = {"features": []}
             all_granules = {"features": []}
 
+    if request.method == "POST":
+        keywords_form = KeywordsForm(request.POST, instance=layer)
+
+        if keywords_form.is_valid():
+            new_keywords = keywords_form.cleaned_data['keywords']
+            layer.keywords.clear()
+            layer.keywords.add(*new_keywords)
+            
+    else:
+        keywords_form = KeywordsForm(instance=layer)
+
     context_dict = {
         "resource": layer,
         'perms_list': get_perms(request.user, layer.get_self_resource()),
@@ -307,6 +330,7 @@ def layer_detail(request, layername, template='layers/layer_detail.html'):
         "granules": granules,
         "all_granules": all_granules,
         "filter": filter,
+        "keywords_form": keywords_form,
     }
 
     if 'access_token' in request.session:

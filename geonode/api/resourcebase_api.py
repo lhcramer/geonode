@@ -38,17 +38,25 @@ from django.core.exceptions import ObjectDoesNotExist
 from tastypie.utils.mime import build_content_type
 
 from geonode.layers.models import Layer
-from geonode.maps.models import Map
+from geonode.maps.models import Map, MapStory
 from geonode.documents.models import Document
 from geonode.base.models import ResourceBase
 from geonode.base.models import HierarchicalKeyword
 
 from .authorization import GeoNodeAuthorization
 
+<<<<<<< HEAD
 from .api import TagResource, RegionResource, OwnersResource
 from .api import ThesaurusKeywordResource
 from .api import TopicCategoryResource
 from .api import FILTER_TYPES
+=======
+from django.conf import settings
+
+from .api import TagResource, RegionResource, ProfileResource, \
+    TopicCategoryResource, \
+    FILTER_TYPES
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
 if settings.HAYSTACK_SEARCH:
     from haystack.query import SearchQuerySet  # noqa
@@ -71,8 +79,10 @@ class CommonMetaApi:
                  'category': ALL_WITH_RELATIONS,
                  'owner': ALL_WITH_RELATIONS,
                  'date': ALL,
+                 'is_published': ALL,
+                 'featured': ALL,
                  }
-    ordering = ['date', 'title', 'popular_count']
+    ordering = ['date', 'title', 'popular_count', 'rating']
     max_limit = None
 
 
@@ -226,6 +236,12 @@ class CommonModelApi(ModelResource):
         # Owner filters
         owner = parameters.getlist("owner__username__in")
 
+        # Published filter
+        published = parameters.get("is_published", None)
+
+        # Featured filter
+        featured = parameters.get("featured", None)
+
         # Sort order
         sort = parameters.get("order_by", "relevance")
 
@@ -239,7 +255,7 @@ class CommonModelApi(ModelResource):
             subtypes = []
 
             for type in type_facets:
-                if type in ["map", "layer", "document", "user"]:
+                if type in ["map", "mapstory", "layer", "document", "user", "group"]:
                     # Type is one of our Major Types (not a sub type)
                     types.append(type)
                 elif type in LAYER_SUBTYPES.keys():
@@ -326,6 +342,18 @@ class CommonModelApi(ModelResource):
                 SearchQuerySet() if sqs is None else sqs).narrow(
                     "owner__username:%s" % ','.join(map(str, owner)))
 
+        # filter by publishing status
+        if published:
+            sqs = (SearchQuerySet() if sqs is None else sqs).filter(
+                SQ(is_published=published)
+                )
+
+        # filter by featured status
+        if featured:
+            sqs = (SearchQuerySet() if sqs is None else sqs).filter(
+                SQ(featured=featured)
+                )
+
         # filter by date
         if date_start:
             sqs = (SearchQuerySet() if sqs is None else sqs).filter(
@@ -405,12 +433,17 @@ class CommonModelApi(ModelResource):
                     facets[facet][item[0]] = item[1]
 
             # Paginate the results
-            paginator = Paginator(sqs, request.GET.get('limit'))
+            paginator = Paginator(sqs, request.GET.get('limit', 1))
 
             try:
                 page = paginator.page(
+<<<<<<< HEAD
                     int(request.GET.get('offset') or 0) /
                     int(request.GET.get('limit'), 0) + 1)
+=======
+                    int(request.GET.get('offset', 0)) /
+                    int(request.GET.get('limit', 1)) + 1)
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
             except InvalidPage:
                 raise Http404("Sorry, no results on that page.")
 
@@ -432,6 +465,7 @@ class CommonModelApi(ModelResource):
             objects = []
 
         object_list = {
+<<<<<<< HEAD
            "meta": {
                 "limit": settings.API_LIMIT_PER_PAGE,
                 "next": next_page,
@@ -441,6 +475,16 @@ class CommonModelApi(ModelResource):
                 "facets": facets,
             },
            "objects": map(lambda x: self.get_haystack_api_fields(x), objects),
+=======
+           "meta": {"limit": settings.CLIENT_RESULTS_LIMIT,
+                    "next": next_page,
+                    "offset": int(getattr(request.GET, 'offset', 0)),
+                    "previous": previous_page,
+                    "total_count": total_count,
+                    "facets": facets,
+                    },
+            'objects': map(lambda x: self.get_haystack_api_fields(x), objects),
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
         }
         self.log_throttled_access(request)
         return self.create_response(request, object_list)
@@ -500,6 +544,30 @@ class CommonModelApi(ModelResource):
 
         Mostly a useful shortcut/hook.
         """
+<<<<<<< HEAD
+=======
+        VALUES = [
+            # fields in the db
+            'id',
+            'uuid',
+            'title',
+            'date',
+            'abstract',
+            'csw_wkt_geometry',
+            'csw_type',
+            'distribution_description',
+            'distribution_url',
+            'owner__username',
+            'share_count',
+            'popular_count',
+            'srid',
+            'category__gn_description',
+            'supplemental_information',
+            'thumbnail_url',
+            'detail_url',
+            'rating',
+        ]
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
 
         # If an user does not have at least view permissions, he won't be able to see the resource at all.
         filtered_objects_ids = None
@@ -571,6 +639,16 @@ class LayerResource(CommonModelApi):
             queryset = queryset.filter(is_published=True)
         resource_name = 'layers'
         excludes = ['csw_anytext', 'metadata_xml']
+
+
+class MapStoryResource(CommonModelApi):
+    """MapStory API"""
+
+    class Meta(CommonMetaApi):
+        queryset = MapStory.objects.distinct().order_by('-date')
+        if settings.RESOURCE_PUBLISHING:
+            queryset = queryset.filter(is_published=True)
+        resource_name = 'mapstories'
 
 
 class MapResource(CommonModelApi):

@@ -107,6 +107,7 @@ urlpatterns = patterns('',
                        (r'^groups/', include('geonode.groups.urls')),
                        (r'^documents/', include('geonode.documents.urls')),
                        (r'^services/', include('geonode.services.urls')),
+<<<<<<< HEAD
 
                        # OAuth Provider
                        url(r'^o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
@@ -116,6 +117,9 @@ urlpatterns = patterns('',
                        url(r'^api/roles', roles, name='roles'),
                        url(r'^api/adminRole', admin_role, name='adminRole'),
                        url(r'^api/users', users, name='users'),
+=======
+                       (r'^collections/', include('geonode.contrib.collections.urls')),
+>>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
                        url(r'', include(api.urls)),
                        )
 
