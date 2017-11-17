@@ -86,7 +86,7 @@ class Command(BaseCommand):
             '-p',
             '--permissions',
             dest="permissions",
-            default="None",
+            default=None,
             help="Permissions to apply to each layer"))
 <<<<<<< HEAD
 
@@ -104,8 +104,15 @@ class Command(BaseCommand):
         workspace = options.get('workspace')
         filter = options.get('filter')
         store = options.get('store')
+<<<<<<< HEAD
         permissions = ast.literal_eval(options.get('permissions'))
 <<<<<<< HEAD
+=======
+        if not options.get('permissions'):
+            permissions = None
+        else:
+            permissions = ast.literal_eval(options.get('permissions'))
+>>>>>>> e7605f5980062789a1dfe0321b74882a9af32ed6
 
 =======
         

@@ -21,10 +21,13 @@
 import os
 import tempfile
 import zipfile
-import autocomplete_light
+from autocomplete_light.registry import autodiscover
 
-from django.conf import settings
 from django import forms
+
+from geonode import geoserver, qgis_server
+from geonode.utils import check_ogc_backend
+
 try:
     import json
 except ImportError:
@@ -32,7 +35,7 @@ except ImportError:
 from geonode.layers.utils import unzip_file
 from geonode.layers.models import Layer, Attribute
 
-autocomplete_light.autodiscover() # flake8: noqa
+autodiscover() # flake8: noqa
 
 from geonode.base.forms import ResourceBaseForm
 
@@ -54,7 +57,7 @@ class LayerForm(ResourceBaseForm):
             'workspace',
             'store',
             'storeType',
-            'typename',
+            'alternate',
             'default_style',
             'styles',
             'upload_session',
@@ -87,20 +90,33 @@ class LayerUploadForm(forms.Form):
     shx_file = forms.FileField(required=False)
     prj_file = forms.FileField(required=False)
     xml_file = forms.FileField(required=False)
+    if check_ogc_backend(geoserver.BACKEND_PACKAGE):
+        sld_file = forms.FileField(required=False)
+    if check_ogc_backend(qgis_server.BACKEND_PACKAGE):
+        qml_file = forms.FileField(required=False)
 
     charset = forms.CharField(required=False)
     metadata_uploaded_preserve = forms.BooleanField(required=False)
     metadata_upload_form = forms.BooleanField(required=False)
+    style_upload_form = forms.BooleanField(required=False)
 
-    spatial_files = (
+    spatial_files = [
         "base_file",
         "dbf_file",
         "shx_file",
-        "prj_file")
+        "prj_file"]
+
+    # Adding style file based on the backend
+    if check_ogc_backend(geoserver.BACKEND_PACKAGE):
+        spatial_files.append('sld_file')
+    if check_ogc_backend(qgis_server.BACKEND_PACKAGE):
+        spatial_files.append('qml_file')
+
+    spatial_files = tuple(spatial_files)
 
     def clean(self):
         cleaned = super(LayerUploadForm, self).clean()
-        dbf_file = shx_file = prj_file = xml_file = None
+        dbf_file = shx_file = prj_file = xml_file = sld_file = None
         base_name = base_ext = None
         if zipfile.is_zipfile(cleaned["base_file"]):
             filenames = zipfile.ZipFile(cleaned["base_file"]).namelist()
@@ -120,6 +136,8 @@ class LayerUploadForm(forms.Form):
                     prj_file = filename
                 elif ext.lower() == '.xml':
                     xml_file = filename
+                elif ext.lower() == '.sld':
+                    sld_file = filename
             if base_name is None:
                 raise forms.ValidationError(
                     "Zip files can only contain shapefile.")
@@ -133,14 +151,23 @@ class LayerUploadForm(forms.Form):
                 prj_file = cleaned["prj_file"].name
             if cleaned["xml_file"] is not None:
                 xml_file = cleaned["xml_file"].name
+            # SLD style only available in GeoServer backend
+            if check_ogc_backend(geoserver.BACKEND_PACKAGE):
+                if cleaned["sld_file"] is not None:
+                    sld_file = cleaned["sld_file"].name
 
-        if not cleaned["metadata_upload_form"] and base_ext.lower() not in (".shp", ".tif", ".tiff", ".geotif", ".geotiff"):
+        if not cleaned["metadata_upload_form"] and not cleaned["style_upload_form"] and base_ext.lower() not in (
+                ".shp", ".tif", ".tiff", ".geotif", ".geotiff", ".asc"):
             raise forms.ValidationError(
-                "Only Shapefiles and GeoTiffs are supported. You uploaded a %s file" %
-                base_ext)
+                "Only Shapefiles, GeoTiffs, and ASCIIs are supported. You "
+                "uploaded a %s file" % base_ext)
         elif cleaned["metadata_upload_form"] and base_ext.lower() not in (".xml"):
             raise forms.ValidationError(
                 "Only XML files are supported. You uploaded a %s file" %
+                base_ext)
+        elif cleaned["style_upload_form"] and base_ext.lower() not in (".sld"):
+            raise forms.ValidationError(
+                "Only SLD files are supported. You uploaded a %s file" %
                 base_ext)
 
         if base_ext.lower() == ".shp":
@@ -167,6 +194,13 @@ class LayerUploadForm(forms.Form):
                         # overwrite as file.shp
                         if cleaned.get("xml_file"):
                             cleaned["xml_file"].name = '%s.xml' % base_name
+            if sld_file is not None:
+                if os.path.splitext(sld_file)[0] != base_name:
+                    if sld_file.find('.shp') != -1:
+                        # force rename of file so that file.shp.xml doesn't
+                        # overwrite as file.shp
+                        if cleaned.get("sld_file"):
+                            cleaned["sld_file"].name = '%s.sld' % base_name
 
         return cleaned
 
@@ -192,9 +226,9 @@ class LayerUploadForm(forms.Form):
 
 
 class NewLayerUploadForm(LayerUploadForm):
-    if 'geonode.geoserver' in settings.INSTALLED_APPS:
+    if check_ogc_backend(geoserver.BACKEND_PACKAGE):
         sld_file = forms.FileField(required=False)
-    if 'geonode_qgis_server' in settings.INSTALLED_APPS:
+    if check_ogc_backend(qgis_server.BACKEND_PACKAGE):
         qml_file = forms.FileField(required=False)
     xml_file = forms.FileField(required=False)
 
@@ -210,12 +244,12 @@ class NewLayerUploadForm(LayerUploadForm):
         "dbf_file",
         "shx_file",
         "prj_file",
-        "xml_file",
+        "xml_file"
     ]
     # Adding style file based on the backend
-    if 'geonode.geoserver' in settings.INSTALLED_APPS:
+    if check_ogc_backend(geoserver.BACKEND_PACKAGE):
         spatial_files.append('sld_file')
-    if 'geonode_qgis_server' in settings.INSTALLED_APPS:
+    if check_ogc_backend(qgis_server.BACKEND_PACKAGE):
         spatial_files.append('qml_file')
 
     spatial_files = tuple(spatial_files)
@@ -223,7 +257,10 @@ class NewLayerUploadForm(LayerUploadForm):
 
 class LayerDescriptionForm(forms.Form):
     title = forms.CharField(300)
-    abstract = forms.CharField(1000, widget=forms.Textarea, required=False)
+    abstract = forms.CharField(2000, widget=forms.Textarea, required=False)
+    supplemental_information = forms.CharField(2000, widget=forms.Textarea, required=False)
+    data_quality_statement = forms.CharField(2000, widget=forms.Textarea, required=False)
+    purpose = forms.CharField(500, required=False)
     keywords = forms.CharField(500, required=False)
 
 

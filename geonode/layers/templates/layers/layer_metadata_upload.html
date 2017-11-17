@@ -14,7 +14,7 @@
 
 {% block body_outer %}
 <div class="page-header">
-  <a href="{% url "layer_browse" %}" class="btn btn-primary pull-right">{% trans "Explore Layers" %}</a>
+  <a href="{% url "layer_browse" %}?limit={{ API_LIMIT_PER_PAGE }}" class="btn btn-primary pull-right">{% trans "Explore Layers" %}</a>
   <h2 class="page-title">{% trans "Upload Layer Metadata" %}</h2>
 </div>
 <div class="row">
@@ -78,7 +78,7 @@
     </section>
 
     <section>
-      <a href="{% url "layer_metadata_upload" resource.typename %}" id="clear-button" class="btn btn-default">{% trans "Clear" %}</a>
+      <a href="{% url "layer_metadata_upload" resource.alternate %}" id="clear-button" class="btn btn-default">{% trans "Clear" %}</a>
       <a href="#" id="upload-button" class="btn btn-danger">{% trans "Upload files" %}</a>
     </section>
   </div>

@@ -60,6 +60,10 @@ def resource_urls(request):
             settings,
             'DISPLAY_RATINGS',
             False),
+        DISPLAY_WMS_LINKS=getattr(
+            settings,
+            'DISPLAY_WMS_LINKS',
+            False),
         TWITTER_CARD=getattr(
             settings,
             'TWITTER_CARD',
@@ -75,6 +79,10 @@ def resource_urls(request):
         OPENGRAPH_ENABLED=getattr(
             settings,
             'OPENGRAPH_ENABLED',
+            False),
+        ADMIN_MODERATE_UPLOADS=getattr(
+            settings,
+            'ADMIN_MODERATE_UPLOADS',
             False),
         HAYSTACK_SEARCH=getattr(
             settings,
@@ -92,6 +100,10 @@ def resource_urls(request):
             settings,
             'CLIENT_RESULTS_LIMIT',
             10),
+        API_LIMIT_PER_PAGE=getattr(
+            settings,
+            'API_LIMIT_PER_PAGE',
+            20),
         SRID_DETAIL=getattr(
             settings,
             'SRID',
@@ -116,7 +128,9 @@ def resource_urls(request):
             dict()).get(
             'METADATA',
             'never'),
+        USE_GEOSERVER=settings.USE_GEOSERVER,
         USE_NOTIFICATIONS=has_notifications,
+        USE_MONITORING='geonode.contrib.monitoring' in settings.INSTALLED_APPS and settings.MONITORING_ENABLED,
         DEFAULT_ANONYMOUS_VIEW_PERMISSION=getattr(settings, 'DEFAULT_ANONYMOUS_VIEW_PERMISSION', False),
         DEFAULT_ANONYMOUS_DOWNLOAD_PERMISSION=getattr(settings, 'DEFAULT_ANONYMOUS_DOWNLOAD_PERMISSION', False),
         EXIF_ENABLED=getattr(
@@ -133,8 +147,14 @@ def resource_urls(request):
             False
         ),
         THESAURI_FILTERS=[t['name'] for t in settings.THESAURI if t.get('filter')],
+        MAP_CLIENT_USE_CROSS_ORIGIN_CREDENTIALS=getattr(
+            settings, 'MAP_CLIENT_USE_CROSS_ORIGIN_CREDENTIALS', False
+        ),
+        SHOW_PROFILE_EMAIL=getattr(
+            settings,
+            "SHOW_PROFILE_EMAIL",
+            False
+        ),
+        OGC_SERVER=getattr(settings, 'OGC_SERVER', None),
     )
-    defaults['message_create_url'] = 'message_create' if not settings.USER_MESSAGES_ALLOW_MULTIPLE_RECIPIENTS\
-        else 'message_create_multiple'
-
     return defaults

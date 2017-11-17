@@ -21,6 +21,7 @@
 import json
 import time
 
+from django.db.models import Q
 from django.conf.urls import url
 from django.contrib.auth import get_user_model
 from django.core.urlresolvers import reverse
@@ -42,7 +43,7 @@ from geonode.layers.models import Layer
 from geonode.maps.models import Map, MapStory
 from geonode.documents.models import Document
 from geonode.groups.models import GroupProfile, GroupCategory
-
+from django.contrib.auth.models import Group
 from django.core.serializers.json import DjangoJSONEncoder
 from tastypie.serializers import Serializer
 from tastypie import fields
@@ -72,7 +73,7 @@ class CountJSONSerializer(Serializer):
                 'base.view_resourcebase'
             )
         if settings.RESOURCE_PUBLISHING:
-            resources = resources.filter(is_published=True)
+            resources = resources.filter(Q(is_published=True) | Q(owner__username__iexact=str(options['user'])))
 
         if options['title_filter']:
             resources = resources.filter(title__icontains=options['title_filter'])
@@ -104,7 +105,7 @@ class TypeFilteredResource(ModelResource):
 
     count = fields.IntegerField()
 
-    def build_filters(self, filters=None):
+    def build_filters(self, filters=None, ignore_bad_filters=False):
         if filters is None:
             filters = {}
         self.type_filter = None
@@ -158,7 +159,7 @@ class ThesaurusKeywordResource(TypeFilteredResource):
     thesaurus_identifier = fields.CharField(null=False)
     label_id = fields.CharField(null=False)
 
-    def build_filters(self, filters={}):
+    def build_filters(self, filters={}, ignore_bad_filters=False):
         """adds filtering by current language"""
 
         id = filters.pop('id', None)
@@ -233,6 +234,116 @@ class RegionResource(TypeFilteredResource):
 
 class TopicCategoryResource(TypeFilteredResource):
     """Category api"""
+    layers_count = fields.IntegerField(default=0)
+
+    def dehydrate_layers_count(self, bundle):
+        request = bundle.request
+        obj_with_perms = get_objects_for_user(request.user,
+                                              'base.view_resourcebase').instance_of(Layer)
+        filter_set = bundle.obj.resourcebase_set.filter(id__in=obj_with_perms.values('id'))
+
+        if not settings.SKIP_PERMS_FILTER:
+            is_admin = False
+            is_staff = False
+            is_manager = False
+            if request.user:
+                is_admin = request.user.is_superuser if request.user else False
+                is_staff = request.user.is_staff if request.user else False
+                try:
+                    is_manager = request.user.groupmember_set.all().filter(role='manager').exists()
+                except:
+                    is_manager = False
+
+            # Get the list of objects the user has access to
+            if settings.ADMIN_MODERATE_UPLOADS:
+                if not is_admin and not is_staff:
+                    if is_manager:
+                        groups = request.user.groups.all()
+                        group_list_all = []
+                        try:
+                            group_list_all = request.user.group_list_all().values('group')
+                        except:
+                            pass
+                        public_groups = GroupProfile.objects.exclude(access="private").values('group')
+                        try:
+                            anonymous_group = Group.objects.get(name='anonymous')
+                            filter_set = filter_set.filter(
+                                Q(group__isnull=True) | Q(group__in=groups) |
+                                Q(group__in=group_list_all) | Q(group__in=public_groups) |
+                                Q(group=anonymous_group) |
+                                Q(owner__username__iexact=str(request.user)))
+                        except:
+                            filter_set = filter_set.filter(
+                                Q(group__isnull=True) | Q(group__in=groups) |
+                                Q(group__in=group_list_all) | Q(group__in=public_groups) |
+                                Q(owner__username__iexact=str(request.user)))
+
+                    else:
+                        filter_set = filter_set.filter(Q(is_published=True) |
+                                                       Q(owner__username__iexact=str(request.user)))
+
+            if settings.RESOURCE_PUBLISHING:
+                if not is_admin and not is_staff:
+                    if is_manager:
+                        groups = request.user.groups.all()
+                        group_list_all = []
+                        try:
+                            group_list_all = request.user.group_list_all().values('group')
+                        except:
+                            pass
+                        public_groups = GroupProfile.objects.exclude(access="private").values('group')
+                        try:
+                            anonymous_group = Group.objects.get(name='anonymous')
+                            filter_set = filter_set.filter(
+                                Q(group__isnull=True) | Q(group__in=groups) |
+                                Q(group__in=public_groups) | Q(group__in=group_list_all) |
+                                Q(group=anonymous_group) |
+                                Q(owner__username__iexact=str(request.user)))
+                        except:
+                            filter_set = filter_set.filter(
+                                Q(group__isnull=True) | Q(group__in=groups) |
+                                Q(group__in=group_list_all) | Q(group__in=public_groups) |
+                                Q(owner__username__iexact=str(request.user)))
+                    else:
+                        filter_set = filter_set.filter(Q(is_published=True) |
+                                                       Q(owner__username__iexact=str(request.user)))
+
+            try:
+                anonymous_group = Group.objects.get(name='anonymous')
+            except:
+                anonymous_group = None
+
+            if settings.GROUP_PRIVATE_RESOURCES:
+                public_groups = GroupProfile.objects.exclude(access="private").values('group')
+                if is_admin:
+                    filter_set = filter_set
+                elif request.user:
+                    groups = request.user.groups.all()
+                    group_list_all = []
+                    try:
+                        group_list_all = request.user.group_list_all().values('group')
+                    except:
+                        pass
+                    if anonymous_group:
+                        filter_set = filter_set.filter(
+                            Q(group__isnull=True) | Q(group__in=groups) |
+                            Q(group__in=group_list_all) | Q(group__in=public_groups) |
+                            Q(group=anonymous_group) |
+                            Q(owner__username__iexact=str(request.user)))
+                    else:
+                        filter_set = filter_set.filter(
+                            Q(group__isnull=True) | Q(group__in=public_groups) |
+                            Q(group__in=group_list_all) | Q(group__in=groups) |
+                            Q(owner__username__iexact=str(request.user)))
+                else:
+                    if anonymous_group:
+                        filter_set = filter_set.filter(
+                            Q(group__isnull=True) | Q(group__in=public_groups) | Q(group=anonymous_group))
+                    else:
+                        filter_set = filter_set.filter(
+                            Q(group__isnull=True) | Q(group__in=public_groups))
+
+        return filter_set.distinct().count()
 
     def serialize(self, request, data, format, options=None):
         if options is None:
@@ -270,9 +381,8 @@ class GroupCategoryResource(TypeFilteredResource):
         return bundle.obj.groups.all().count()
 
 
-class GroupResource(ModelResource):
+class GroupResource(TypeFilteredResource):
     """Groups api"""
-
     detail_url = fields.CharField()
     member_count = fields.IntegerField()
     manager_count = fields.IntegerField()
@@ -281,6 +391,43 @@ class GroupResource(ModelResource):
 =======
     keywords = fields.CharField(null=True, attribute='keywords')
 >>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
+
+    def build_filters(self, filters=None, ignore_bad_filters=False):
+        """adds filtering by group functionality"""
+        if filters is None:
+            filters = {}
+
+        orm_filters = super(GroupResource, self).build_filters(filters)
+
+        if 'group' in filters:
+            orm_filters['group'] = filters['group']
+
+        if 'name__icontains' in filters:
+            orm_filters['title__icontains'] = filters['name__icontains']
+            orm_filters['title_en__icontains'] = filters['name__icontains']
+        return orm_filters
+
+    def apply_filters(self, request, applicable_filters):
+        """filter by group if applicable by group functionality"""
+
+        group = applicable_filters.pop('group', None)
+        name = applicable_filters.pop('name__icontains', None)
+
+        semi_filtered = super(
+            GroupResource,
+            self).apply_filters(
+            request,
+            applicable_filters)
+
+        if group is not None:
+            semi_filtered = semi_filtered.filter(
+                groupmember__group__slug=group)
+
+        if name is not None:
+            semi_filtered = semi_filtered.filter(
+                Q(title__icontains=name) | Q(title_en__icontains=name))
+
+        return semi_filtered
 
     def dehydrate_member_count(self, bundle):
         return bundle.obj.member_queryset().count()
@@ -313,7 +460,6 @@ class GroupResource(ModelResource):
 
 class ProfileResource(TypeFilteredResource):
     """Profile api"""
-
     avatar_100 = fields.CharField(null=True)
     profile_detail_url = fields.CharField()
     email = fields.CharField(default='')
@@ -324,7 +470,7 @@ class ProfileResource(TypeFilteredResource):
     activity_stream_url = fields.CharField(null=True)
     is_active = fields.BooleanField(attribute='is_active')
 
-    def build_filters(self, filters=None):
+    def build_filters(self, filters=None, ignore_bad_filters=False):
         """adds filtering by group functionality"""
         if filters is None:
             filters = {}
@@ -340,18 +486,24 @@ class ProfileResource(TypeFilteredResource):
         if 'q' in filters:
             orm_filters['q'] = filters['q']
 
+        if 'name__icontains' in filters:
+            orm_filters['username__icontains'] = filters['name__icontains']
         return orm_filters
 
     def apply_filters(self, request, applicable_filters):
         """filter by group if applicable by group functionality"""
 
         group = applicable_filters.pop('group', None)
+<<<<<<< HEAD
         q = applicable_filters.pop('q', None)
 
         if 'interest_list' in applicable_filters:
             interest_list = applicable_filters.pop('interest_list')
         else:
             interest_list = None
+=======
+        name = applicable_filters.pop('name__icontains', None)
+>>>>>>> e7605f5980062789a1dfe0321b74882a9af32ed6
 
         semi_filtered = super(
             ProfileResource,
@@ -363,11 +515,17 @@ class ProfileResource(TypeFilteredResource):
             semi_filtered = semi_filtered.filter(
                 groupmember__group__slug=group)
 
+<<<<<<< HEAD
         if interest_list is not None:
             semi_filtered = semi_filtered.filter(interest_list)
         
         if q:
             semi_filtered = semi_filtered.filter(username__icontains=q)
+=======
+        if name is not None:
+            semi_filtered = semi_filtered.filter(
+                profile__first_name__icontains=name)
+>>>>>>> e7605f5980062789a1dfe0321b74882a9af32ed6
 
         return semi_filtered
 
@@ -455,7 +613,7 @@ class ProfileResource(TypeFilteredResource):
         return result
 
     class Meta:
-        queryset = get_user_model().objects.exclude(username='AnonymousUser')
+        queryset = get_user_model().objects.exclude(Q(username='AnonymousUser') | Q(is_active=False))
         resource_name = 'profiles'
         allowed_methods = ['get']
         ordering = ['username', 'date_joined', 'layers_count', 'first_name']

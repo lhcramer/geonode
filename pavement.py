@@ -18,6 +18,8 @@
 #
 #########################################################################
 
+import fileinput
+import glob
 import os
 import re
 import shutil
@@ -26,20 +28,16 @@ import time
 import urllib
 import urllib2
 import zipfile
-import glob
-import fileinput
-import yaml
-
-from setuptools.command import easy_install
 from urlparse import urlparse
 
-from paver.easy import task, options, cmdopts, needs
-from paver.easy import path, sh, info, call_task
-from paver.easy import BuildFailure
+import yaml
+from paver.easy import (BuildFailure, call_task, cmdopts, info, needs, options,
+                        path, sh, task)
+from setuptools.command import easy_install
 
 try:
     from geonode.settings import GEONODE_APPS
-except:
+except BaseException:
     # probably trying to run install_win_deps.
     pass
 
@@ -83,17 +81,35 @@ def grab(src, dest, name):
 ])
 def setup_geoserver(options):
     """Prepare a testing instance of GeoServer."""
+    from geonode.settings import INSTALLED_APPS
+
+    # only start if using Geoserver backend
+    if 'geonode.geoserver' not in INSTALLED_APPS:
+        return
+
     download_dir = path('downloaded')
     if not download_dir.exists():
         download_dir.makedirs()
 
     geoserver_dir = path('geoserver')
 
-    geoserver_bin = download_dir / os.path.basename(dev_config['GEOSERVER_URL'])
-    jetty_runner = download_dir / os.path.basename(dev_config['JETTY_RUNNER_URL'])
+    geoserver_bin = download_dir / \
+        os.path.basename(dev_config['GEOSERVER_URL'])
+    jetty_runner = download_dir / \
+        os.path.basename(dev_config['JETTY_RUNNER_URL'])
 
-    grab(options.get('geoserver', dev_config['GEOSERVER_URL']), geoserver_bin, "geoserver binary")
-    grab(options.get('jetty', dev_config['JETTY_RUNNER_URL']), jetty_runner, "jetty runner")
+    grab(
+        options.get(
+            'geoserver',
+            dev_config['GEOSERVER_URL']),
+        geoserver_bin,
+        "geoserver binary")
+    grab(
+        options.get(
+            'jetty',
+            dev_config['JETTY_RUNNER_URL']),
+        jetty_runner,
+        "jetty runner")
 
     if not geoserver_dir.exists():
         geoserver_dir.makedirs()
@@ -109,6 +125,47 @@ def setup_geoserver(options):
     _install_data_dir()
 
 
+@task
+def setup_qgis_server(options):
+    """Prepare a testing instance of QGIS Server."""
+    from geonode.settings import INSTALLED_APPS
+
+    # only start if using QGIS Server backend
+    if 'geonode.qgis_server' not in INSTALLED_APPS:
+        return
+
+    # QGIS Server testing instance run on top of docker
+    try:
+        sh('scripts/misc/docker_check.sh')
+    except BaseException:
+        info("You need to have docker and docker-compose installed.")
+        return
+
+    info('Docker and docker-compose were installed.')
+    info('Proceeded to setup QGIS Server.')
+    info('Create QGIS Server related folder.')
+
+    try:
+        os.makedirs('geonode/qgis_layer')
+    except BaseException:
+        pass
+
+    try:
+        os.makedirs('geonode/qgis_tiles')
+    except BaseException:
+        pass
+
+    all_permission = 0o777
+    os.chmod('geonode/qgis_layer', all_permission)
+    stat = os.stat('geonode/qgis_layer')
+    info('Mode : %o' % stat.st_mode)
+    os.chmod('geonode/qgis_tiles', all_permission)
+    stat = os.stat('geonode/qgis_tiles')
+    info('Mode : %o' % stat.st_mode)
+
+    info('QGIS Server related folder successfully setup.')
+
+
 def _install_data_dir():
     target_data_dir = path('geoserver/data')
     if target_data_dir.exists():
@@ -117,13 +174,55 @@ def _install_data_dir():
     original_data_dir = path('geoserver/geoserver/data')
     justcopy(original_data_dir, target_data_dir)
 
-    config = path('geoserver/data/security/auth/geonodeAuthProvider/config.xml')
-    with open(config) as f:
-        xml = f.read()
-        m = re.search('baseUrl>([^<]+)', xml)
-        xml = xml[:m.start(1)] + "http://localhost:8000/" + xml[m.end(1):]
-        with open(config, 'w') as f:
-            f.write(xml)
+    try:
+        config = path(
+            'geoserver/data/global.xml')
+        with open(config) as f:
+            xml = f.read()
+            m = re.search('proxyBaseUrl>([^<]+)', xml)
+            xml = xml[:m.start(1)] + \
+                "http://localhost:8080/geoserver" + xml[m.end(1):]
+            with open(config, 'w') as f:
+                f.write(xml)
+    except Exception as e:
+        print(e)
+
+    try:
+        config = path(
+            'geoserver/data/security/filter/geonode-oauth2/config.xml')
+        with open(config) as f:
+            xml = f.read()
+            m = re.search('accessTokenUri>([^<]+)', xml)
+            xml = xml[:m.start(1)] + \
+                "http://localhost:8000/o/token/" + xml[m.end(1):]
+            m = re.search('userAuthorizationUri>([^<]+)', xml)
+            xml = xml[:m.start(
+                1)] + "http://localhost:8000/o/authorize/" + xml[m.end(1):]
+            m = re.search('redirectUri>([^<]+)', xml)
+            xml = xml[:m.start(
+                1)] + "http://localhost:8080/geoserver/index.html" + xml[m.end(1):]
+            m = re.search('checkTokenEndpointUrl>([^<]+)', xml)
+            xml = xml[:m.start(
+                1)] + "http://localhost:8000/api/o/v4/tokeninfo/" + xml[m.end(1):]
+            m = re.search('logoutUri>([^<]+)', xml)
+            xml = xml[:m.start(
+                1)] + "http://localhost:8000/account/logout/" + xml[m.end(1):]
+            with open(config, 'w') as f:
+                f.write(xml)
+    except Exception as e:
+        print(e)
+
+    try:
+        config = path(
+            'geoserver/data/security/role/geonode REST role service/config.xml')
+        with open(config) as f:
+            xml = f.read()
+            m = re.search('baseUrl>([^<]+)', xml)
+            xml = xml[:m.start(1)] + "http://localhost:8000" + xml[m.end(1):]
+            with open(config, 'w') as f:
+                f.write(xml)
+    except Exception as e:
+        print(e)
 
 
 @task
@@ -135,10 +234,12 @@ def static(options):
 @task
 @needs([
     'setup_geoserver',
+    'setup_qgis_server',
 ])
 def setup(options):
     """Get dependencies and prepare a GeoNode development environment."""
 
+    updategeoip(options)
     info(('GeoNode development environment successfully set up.'
           'If you have not set up an administrative account,'
           ' please do so now. Use "paver start" to start up the server.'))
@@ -178,7 +279,7 @@ def win_install_deps(options):
         grab_winfiles(url, tempfile, package)
         try:
             easy_install.main([tempfile])
-        except Exception, e:
+        except Exception as e:
             failed = True
             print "install failed with error: ", e
         os.remove(tempfile)
@@ -210,10 +311,19 @@ def upgradedb(options):
 
 
 @task
+def updategeoip(options):
+    """
+    Update geoip db
+    """
+    sh("python manage.py updategeoip -o")
+
+
+@task
 def sync(options):
     """
     Run the migrate and migrate management commands to create and migrate a DB
     """
+    sh("python manage.py makemigrations --noinput")
     sh("python manage.py migrate --noinput")
     sh("python manage.py loaddata sample_admin.json")
     sh("python manage.py loaddata geonode/base/fixtures/default_oauth_apps.json")
@@ -285,6 +395,7 @@ def package(options):
 
 @task
 @needs(['start_geoserver',
+        'start_qgis_server',
         'start_django'])
 @cmdopts([
     ('bind=', 'b', 'Bind server to provided IP address and port number.'),
@@ -295,6 +406,8 @@ def start():
     """
     Start GeoNode (Django, GeoServer & Client)
     """
+    call_task('start_messaging')
+
     info("GeoNode is now available.")
 
 
@@ -304,6 +417,7 @@ def stop_django():
     Stop the GeoNode Django application
     """
     kill('python', 'runserver')
+    kill('python', 'runmessaging')
 
 
 @task
@@ -311,16 +425,48 @@ def stop_geoserver():
     """
     Stop GeoServer
     """
+    from geonode.settings import INSTALLED_APPS
+
+    # only start if using Geoserver backend
+    if 'geonode.geoserver' not in INSTALLED_APPS:
+        return
     kill('java', 'geoserver')
 
 
 @task
+@cmdopts([
+    ('qgis_server_port=', 'p', 'The port of the QGIS Server instance.')
+])
+def stop_qgis_server():
+    """
+    Stop QGIS Server Backend.
+    """
+    from geonode.settings import INSTALLED_APPS
+
+    # only start if using QGIS Server backend
+    if 'geonode.qgis_server' not in INSTALLED_APPS:
+        return
+    port = options.get('qgis_server_port', '9000')
+
+    sh(
+        'docker-compose -f docker-compose-qgis-server.yml down',
+        env={
+            'GEONODE_PROJECT_PATH': os.getcwd(),
+            'QGIS_SERVER_PORT': port
+        })
+
+
+@task
+@needs([
+    'stop_geoserver',
+    'stop_qgis_server'
+])
 def stop():
     """
     Stop GeoNode
     """
-    # windows needs to stop the geoserver first b/c we can't tell which python is running, so we kill everything
-    stop_geoserver()
+    # windows needs to stop the geoserver first b/c we can't tell which python
+    # is running, so we kill everything
     info("Stopping GeoNode ...")
     stop_django()
 
@@ -333,9 +479,17 @@ def start_django():
     """
     Start the GeoNode Django application
     """
-    bind = options.get('bind', '')
+    bind = options.get('bind', '0.0.0.0:8000')
     foreground = '' if options.get('foreground', False) else '&'
     sh('python manage.py runserver %s %s' % (bind, foreground))
+
+
+def start_messaging():
+    """
+    Start the GeoNode messaging server
+    """
+    foreground = '' if options.get('foreground', False) else '&'
+    sh('python manage.py runmessaging %s' % foreground)
 
 
 @cmdopts([
@@ -347,7 +501,12 @@ def start_geoserver(options):
     Start GeoServer with GeoNode extensions
     """
 
-    from geonode.settings import OGC_SERVER
+    from geonode.settings import OGC_SERVER, INSTALLED_APPS
+
+    # only start if using Geoserver backend
+    if 'geonode.geoserver' not in INSTALLED_APPS:
+        return
+
     GEOSERVER_BASE_URL = OGC_SERVER['default']['LOCATION']
     url = GEOSERVER_BASE_URL
 
@@ -359,8 +518,10 @@ def start_geoserver(options):
         sys.exit(1)
 
     download_dir = path('downloaded').abspath()
-    jetty_runner = download_dir / os.path.basename(dev_config['JETTY_RUNNER_URL'])
+    jetty_runner = download_dir / \
+        os.path.basename(dev_config['JETTY_RUNNER_URL'])
     data_dir = path('geoserver/data').abspath()
+    geofence_dir = path('geoserver/data/geofence').abspath()
     web_app = path('geoserver/geoserver').abspath()
     log_file = path('geoserver/jetty.log').abspath()
     config = path('scripts/misc/jetty-runner.xml').abspath()
@@ -371,11 +532,12 @@ def start_geoserver(options):
         javapath = "java"
         loggernullpath = os.devnull
 
-        # checking if our loggernullpath exists and if not, reset it to something manageable
+        # checking if our loggernullpath exists and if not, reset it to
+        # something manageable
         if loggernullpath == "nul":
             try:
                 open("../../downloaded/null.txt", 'w+').close()
-            except IOError, e:
+            except IOError as e:
                 print "Chances are that you have Geoserver currently running.  You \
                         can either stop all servers with paver stop or start only \
                         the django application with paver start_django."
@@ -384,12 +546,13 @@ def start_geoserver(options):
 
         try:
             sh(('java -version'))
-        except:
+        except BaseException:
             print "Java was not found in your path.  Trying some other options: "
             javapath_opt = None
             if os.environ.get('JAVA_HOME', None):
                 print "Using the JAVA_HOME environment variable"
-                javapath_opt = os.path.join(os.path.abspath(os.environ['JAVA_HOME']), "bin", "java.exe")
+                javapath_opt = os.path.join(os.path.abspath(
+                    os.environ['JAVA_HOME']), "bin", "java.exe")
             elif options.get('java_path'):
                 javapath_opt = options.get('java_path')
             else:
@@ -403,8 +566,10 @@ def start_geoserver(options):
         sh((
             '%(javapath)s -Xms512m -Xmx1024m -server -XX:+UseConcMarkSweepGC -XX:MaxPermSize=256m'
             ' -DGEOSERVER_DATA_DIR=%(data_dir)s'
+            ' -Dgeofence.dir=%(geofence_dir)s'
+            # ' -Dgeofence-ovr=geofence-datasource-ovr.properties'
             # workaround for JAI sealed jar issue and jetty classloader
-            ' -Dorg.eclipse.jetty.server.webapp.parentLoaderPriority=true'
+            # ' -Dorg.eclipse.jetty.server.webapp.parentLoaderPriority=true'
             ' -jar %(jetty_runner)s'
             ' --port %(jetty_port)i'
             ' --log %(log_file)s'
@@ -427,6 +592,30 @@ def start_geoserver(options):
 
 
 @task
+@cmdopts([
+    ('qgis_server_port=', 'p', 'The port of the QGIS Server instance.')
+])
+def start_qgis_server():
+    """Start QGIS Server instance with GeoNode related plugins."""
+    from geonode.settings import INSTALLED_APPS
+
+    # only start if using QGIS Serrver backend
+    if 'geonode.qgis_server' not in INSTALLED_APPS:
+        return
+    info('Starting up QGIS Server...')
+
+    port = options.get('qgis_server_port', '9000')
+
+    sh(
+        'docker-compose -f docker-compose-qgis-server.yml up -d qgis-server',
+        env={
+            'GEONODE_PROJECT_PATH': os.getcwd(),
+            'QGIS_SERVER_PORT': port
+        })
+    info('QGIS Server is up.')
+
+
+@task
 def test(options):
     """
     Run GeoNode's Unit Test Suite
@@ -444,7 +633,7 @@ def test_javascript(options):
 @task
 @cmdopts([
     ('name=', 'n', 'Run specific tests.')
-    ])
+])
 def test_integration(options):
     """
     Run GeoNode's Integration test suite against the external apps
@@ -464,8 +653,8 @@ def test_integration(options):
             sh('sleep 30')
             call_task('setup_data')
         sh(('python manage.py test %s'
-           ' --noinput --liveserver=localhost:8000' % name))
-    except BuildFailure, e:
+            ' --noinput --liveserver=0.0.0.0:8000' % name))
+    except BuildFailure as e:
         info('Tests failed! %s' % str(e))
     else:
         success = True
@@ -593,13 +782,13 @@ def deb(options):
             sh('debuild -uc -us -A')
         elif key is None and ppa is not None:
                 # A sources package, signed by daemon
-                sh('debuild -S')
+            sh('debuild -S')
         elif key is not None and ppa is None:
-                # A signed installable package
-                sh('debuild -k%s -A' % key)
+            # A signed installable package
+            sh('debuild -k%s -A' % key)
         elif key is not None and ppa is not None:
-                # A signed, source package
-                sh('debuild -k%s -S' % key)
+            # A signed, source package
+            sh('debuild -k%s -S' % key)
 
     if ppa is not None:
         sh('dput ppa:%s geonode_%s_source.changes' % (ppa, simple_version))
@@ -643,7 +832,7 @@ def versions():
     if stage == 'final':
         stage = 'thefinal'
 
-    if stage == 'alpha' and edition == 0:
+    if stage == 'unstable':
         tail = '%s%s' % (branch, timestamp)
     else:
         tail = '%s%s' % (stage, edition)
@@ -676,7 +865,9 @@ def kill(arg1, arg2):
         running = False
         for line in lines:
             # this kills all java.exe and python including self in windows
-            if ('%s' % arg2 in line) or (os.name == 'nt' and '%s' % arg1 in line):
+            if ('%s' %
+                arg2 in line) or (os.name == 'nt' and '%s' %
+                                  arg1 in line):
                 running = True
 
                 # Get pid

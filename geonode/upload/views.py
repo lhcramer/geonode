@@ -127,7 +127,8 @@ class JSONResponse(HttpResponse):
         if json_opts is None:
             json_opts = {}
         content = json.dumps(obj, **json_opts)
-        super(JSONResponse, self).__init__(content, content_type, *args, **kwargs)
+        super(JSONResponse, self).__init__(
+            content, content_type, *args, **kwargs)
 
 
 def _error_response(req, exception=None, errors=None, force_ajax=True):
@@ -231,8 +232,13 @@ def _next_step_response(req, upload_session, force_ajax=True):
                                        force_ajax=force_ajax)
     if req.is_ajax() or force_ajax:
         content_type = 'text/html' if not req.is_ajax() else None
-        return json_response(redirect_to=reverse('data_upload', args=[next]) + "?id=%s" % req.GET['id'],
-                             content_type=content_type)
+        return json_response(
+            redirect_to=reverse(
+                'data_upload',
+                args=[next]) +
+            "?id=%s" %
+            req.GET['id'],
+            content_type=content_type)
     # return HttpResponseRedirect(reverse('data_upload', args=[next]))
 
 
@@ -343,7 +349,8 @@ def data_upload_progress(req):
     if 'id' in req.GET:
         upload_id = str(req.GET['id'])
         if upload_id in req.session:
-            upload_obj = get_object_or_404(Upload, import_id=upload_id, user=req.user)
+            upload_obj = get_object_or_404(
+                Upload, import_id=upload_id, user=req.user)
             upload_session = upload_obj.get_session()
         else:
             upload_session = req.session[upload_id]
@@ -566,11 +573,34 @@ def final_step_view(req, upload_session):
 
     # this response is different then all of the other views in the
     # upload as it does not return a response as a json object
+<<<<<<< HEAD
     return json_response(
         {'url': reverse('layer_upload_metadata', kwargs={'layername': saved_layer.typename}),
          'success': True
          }
     )
+=======
+    _json_response = None
+    try:
+        _json_response = json_response(
+            {
+                'url': saved_layer.get_absolute_url(),
+                'bbox': saved_layer.bbox_string,
+                'crs': {
+                    'type': 'name',
+                    'properties': saved_layer.srid
+                },
+                'success': True
+            }
+        )
+    except BaseException:
+        _json_response = json_response(
+            {'url': saved_layer.get_absolute_url(),
+             'success': True
+             }
+        )
+    return _json_response
+>>>>>>> e7605f5980062789a1dfe0321b74882a9af32ed6
 
 
 _steps = {
@@ -586,6 +616,7 @@ _steps = {
 _pages = {
     'shp': ('srs', 'time', 'run', 'final'),
     'tif': ('run', 'final'),
+    'asc': ('run', 'final'),
     'kml': ('run', 'final'),
     'csv': ('csv', 'time', 'run', 'final'),
     'geojson': ('run', 'final'),
@@ -686,7 +717,8 @@ def view(req, step):
                     req,
                     {}))
 
-        upload_obj = get_object_or_404(Upload, import_id=upload_id, user=req.user)
+        upload_obj = get_object_or_404(
+            Upload, import_id=upload_id, user=req.user)
         session = upload_obj.get_session()
         if session:
             upload_session = session
@@ -710,7 +742,7 @@ def view(req, step):
                 try:
                     resp_js = json.loads(resp.content)
                     delete_session = resp_js.get('status') != 'pending'
-                except:
+                except BaseException:
                     pass
 
                 if delete_session:
@@ -807,7 +839,8 @@ class UploadFileDeleteView(DeleteView):
         self.object = self.get_object()
         self.object.delete()
         if request.is_ajax():
-            response = JSONResponse(True, {}, response_content_type(self.request))
+            response = JSONResponse(
+                True, {}, response_content_type(self.request))
             response['Content-Disposition'] = 'inline; filename=files.json'
             return response
         else:

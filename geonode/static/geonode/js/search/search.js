@@ -380,7 +380,7 @@
     $scope.$on('select_h_keyword', function($event, element){
       var data_filter = 'keywords__slug__in';
       var query_entry = [];
-      var value = element.text;
+      var value = (element.href ? element.href : element.text);
       // If the query object has the record then grab it
       if ($scope.query.hasOwnProperty(data_filter)){
 
@@ -407,7 +407,7 @@
     $scope.$on('unselect_h_keyword', function($event, element){
       var data_filter = 'keywords__slug__in';
       var query_entry = [];
-      var value = element.text;
+      var value = (element.href ? element.href : element.text);
       // If the query object has the record then grab it
       if ($scope.query.hasOwnProperty(data_filter)){
 
@@ -437,7 +437,7 @@
     * and pushes/removes the value of the element from the query object
     */
     $scope.multiple_choice_listener = function($event){
-      var element = $($event.target);
+      var element = $(event.currentTarget);
       var query_entry = [];
       var data_filter = element.attr('data-filter');
       var value = element.attr('data-value');
@@ -482,6 +482,7 @@
       query_api($scope.query);
     }
 
+<<<<<<< HEAD
     /*
     * Setting the query to a single element - replaces single_choice_listener
     */
@@ -503,6 +504,10 @@
     * Add the query, appending it to any current query
     */
     $scope.add_query = function(filter, value) {
+=======
+    $scope.single_choice_listener = function($event){
+      var element = $(event.currentTarget);
+>>>>>>> e7605f5980062789a1dfe0321b74882a9af32ed6
       var query_entry = [];
 <<<<<<< HEAD
       var data_filter = element.attr('data-filter');
@@ -1081,7 +1086,7 @@
     });
 
     $scope.feature_select = function($event){
-      var element = $($event.target);
+      var element = $(event.currentTarget);
       var article = $(element.parents('article')[0]);
       if (article.hasClass('resource_selected')){
         element.html('Select');
@@ -1136,12 +1141,12 @@
         layers: {
           baselayers: {
             stamen: {
-              name: 'Toner Lite',
+              name: 'OpenStreetMap Mapnik',
               type: 'xyz',
-              url: 'http://{s}.tile.stamen.com/toner-lite/{z}/{x}/{y}.png',
+              url: '//{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
               layerOptions: {
                 subdomains: ['a', 'b', 'c'],
-                attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>',
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
                 continuousWorld: true
               }
             }
@@ -1170,7 +1175,7 @@
 
       var showMap = false;
       $('#_extent_filter').click(function(evt) {
-     	  showMap = !showMap
+          showMap = !showMap
         if (showMap){
           leafletData.getMap().then(function(map) {
             map.invalidateSize();

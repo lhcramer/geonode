@@ -29,6 +29,7 @@ import glob
 import sys
 import tempfile
 
+from geonode.maps.models import Map
 from osgeo import gdal
 
 # Django functionality
@@ -42,13 +43,14 @@ from django.db import transaction
 from django.db.models import Q
 
 # Geonode functionality
-from geonode import GeoNodeException
+from geonode import GeoNodeException, geoserver, qgis_server
 from geonode.people.utils import get_valid_user
-from geonode.layers.models import Layer, UploadSession
-from geonode.base.models import Link, SpatialRepresentationType, TopicCategory, Region, License
+from geonode.layers.models import Layer, UploadSession, LayerFile
+from geonode.base.models import Link, SpatialRepresentationType,  \
+    TopicCategory, Region, License, ResourceBase
 from geonode.layers.models import shp_exts, csv_exts, vec_exts, cov_exts
 from geonode.layers.metadata import set_metadata
-from geonode.utils import http_client
+from geonode.utils import http_client, check_ogc_backend
 
 import tarfile
 
@@ -84,7 +86,8 @@ def resolve_regions(regions):
         if len(regions) > 0:
             for region in regions:
                 try:
-                    region_resolved = Region.objects.get(Q(name__iexact=region) | Q(code__iexact=region))
+                    region_resolved = Region.objects.get(
+                        Q(name__iexact=region) | Q(code__iexact=region))
                     regions_resolved.append(region_resolved)
                 except ObjectDoesNotExist:
                     regions_unresolved.append(region)
@@ -146,7 +149,8 @@ def get_files(filename):
     elif extension.lower() in cov_exts:
         files[extension.lower().replace('.', '')] = filename
 
-    if 'geonode.geoserver' in settings.INSTALLED_APPS:
+    # Only for GeoServer
+    if check_ogc_backend(geoserver.BACKEND_PACKAGE):
         matches = glob.glob(glob_name + ".[sS][lL][dD]")
         if len(matches) == 1:
             files['sld'] = matches[0]
@@ -155,7 +159,7 @@ def get_files(filename):
                    'distinct by spelling and not just case.') % filename
             raise GeoNodeException(msg)
 
-    matches = glob.glob(base_name + ".[xX][mM][lL]")
+    matches = glob.glob(glob_name + ".[xX][mM][lL]")
 
     # shapefile XML metadata is sometimes named base_name.shp.xml
     # try looking for filename.xml if base_name.xml does not exist
@@ -169,7 +173,8 @@ def get_files(filename):
                'distinct by spelling and not just case.') % filename
         raise GeoNodeException(msg)
 
-    if 'geonode_qgis_server' in settings.INSTALLED_APPS:
+    # Only for QGIS Server
+    if check_ogc_backend(qgis_server.BACKEND_PACKAGE):
         matches = glob.glob(glob_name + ".[qQ][mM][lL]")
         logger.debug('Checking QML file')
         logger.debug('Number of matches QML file : %s' % len(matches))
@@ -178,6 +183,20 @@ def get_files(filename):
             files['qml'] = matches[0]
         elif len(matches) > 1:
             msg = ('Multiple style files (qml) for %s exist; they need to be '
+                   'distinct by spelling and not just case.') % filename
+            raise GeoNodeException(msg)
+
+        # Provides json files for additional extra data
+        matches = glob.glob(glob_name + ".[jJ][sS][oO][nN]")
+        logger.debug('Checking JSON File')
+        logger.debug(
+            'Number of matches JSON file : %s' % len(matches))
+        logger.debug('glob name: %s' % glob)
+
+        if len(matches) == 1:
+            files['json'] = matches[0]
+        elif len(matches) > 1:
+            msg = ('Multiple json files (json) for %s exist; they need to be '
                    'distinct by spelling and not just case.') % filename
             raise GeoNodeException(msg)
 
@@ -226,7 +245,6 @@ def get_valid_name(layer_name):
     """
     Create a brand new name
     """
-
     name = _clean_string(layer_name)
     proposed_name = name
     count = 1
@@ -248,7 +266,7 @@ def get_valid_layer_name(layer, overwrite):
     if isinstance(layer, Layer):
         layer_name = layer.name
     elif isinstance(layer, basestring):
-        layer_name = layer
+        layer_name = str(layer)
     else:
         msg = ('You must pass either a filename or a GeoNode layer object')
         raise GeoNodeException(msg)
@@ -300,6 +318,7 @@ def get_resolution(filename):
 
 
 def get_bbox(filename):
+    """Return bbox in the format [xmin,xmax,ymin,ymax]."""
     from django.contrib.gis.gdal import DataSource
     bbox_x0, bbox_y0, bbox_x1, bbox_y1 = None, None, None, None
 
@@ -328,10 +347,11 @@ def get_bbox(filename):
             yarr.reverse()
 
         # ext has four corner points, get a bbox from them.
-        bbox_x0 = ext[0][0]
-        bbox_y0 = ext[0][1]
-        bbox_x1 = ext[2][0]
-        bbox_y1 = ext[2][1]
+        # order is important, so make sure min and max is correct.
+        bbox_x0 = min(ext[0][0], ext[2][0])
+        bbox_y0 = min(ext[0][1], ext[2][1])
+        bbox_x1 = max(ext[0][0], ext[2][0])
+        bbox_y1 = max(ext[0][1], ext[2][1])
 
     return [bbox_x0, bbox_x1, bbox_y0, bbox_y1]
 
@@ -379,6 +399,9 @@ def file_upload(filename, name=None, user=None, title=None, abstract=None,
                 metadata_upload_form=False):
     """Saves a layer in GeoNode asking as little information as possible.
        Only filename is required, user and title are optional.
+
+    :return: Uploaded layer
+    :rtype: Layer
     """
     if keywords is None:
         keywords = []
@@ -432,8 +455,10 @@ def file_upload(filename, name=None, user=None, title=None, abstract=None,
     assigned_name = None
     for type_name, fn in files.items():
         with open(fn, 'rb') as f:
-            upload_session.layerfile_set.create(name=type_name,
-                                                file=File(f, name='%s.%s' % (assigned_name or valid_name, type_name)))
+            upload_session.layerfile_set.create(
+                name=type_name, file=File(
+                    f, name='%s.%s' %
+                    (assigned_name or valid_name, type_name)))
             # save the system assigned name for the remaining files
             if not assigned_name:
                 the_file = upload_session.layerfile_set.all()[0].file.name
@@ -502,7 +527,7 @@ def file_upload(filename, name=None, user=None, title=None, abstract=None,
             if nlp_metadata:
                 regions_resolved.extend(nlp_metadata.get('regions', []))
                 keywords.extend(nlp_metadata.get('keywords', []))
-        except:
+        except BaseException:
             print "NLP extraction failed."
 
     # If it is a vector file, create the layer in postgis.
@@ -534,9 +559,18 @@ def file_upload(filename, name=None, user=None, title=None, abstract=None,
         if layer.upload_session:
             layer.upload_session.layerfile_set.all().delete()
         layer.upload_session = upload_session
+
+        # update with new information
+        Layer.objects.filter(id=layer.id).update(**defaults)
+        layer.refresh_from_db()
+
         # Pass the parameter overwrite to tell whether the
         # geoserver_post_save_signal should upload the new file or not
         layer.overwrite = overwrite
+
+        # Blank out the store if overwrite is true.
+        # geoserver_post_save_signal should upload the new file if needed
+        layer.store = ''
         layer.save()
 
     # Assign the keywords (needs to be done after saving)
@@ -552,30 +586,36 @@ def file_upload(filename, name=None, user=None, title=None, abstract=None,
             layer.regions.clear()
             layer.regions.add(*regions_resolved)
 
-    saveAgain = False
+    # Assign and save the charset using the Layer class' object (layer)
+    if charset != 'UTF-8':
+        layer.charset = charset
+        layer.save()
 
+    to_update = {}
     if title is not None:
-        layer.title = title
-        saveAgain = True
+        to_update['title'] = title
 
     if abstract is not None:
-        layer.abstract = abstract
-        saveAgain = True
+        to_update['abstract'] = abstract
 
     if date is not None:
-        layer.date = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
-        saveAgain = True
+        to_update['date'] = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
 
     if license is not None:
-        layer.license = license
-        saveAgain = True
+        to_update['license'] = license
 
     if category is not None:
-        layer.category = category
-        saveAgain = True
+        to_update['category'] = category
 
-    if saveAgain:
-        layer.save()
+    # Update ResourceBase
+    if not to_update:
+        pass
+    else:
+        ResourceBase.objects.filter(id=layer.resourcebase_ptr.id).update(**to_update)
+        Layer.objects.filter(id=layer.id).update(**to_update)
+
+        # Refresh from DB
+        layer.refresh_from_db()
 
     return layer
 
@@ -586,7 +626,8 @@ def upload(incoming, user=None, overwrite=False,
            category=None, keywords=None, regions=None,
            skip=True, ignore_errors=True,
            verbosity=1, console=None,
-           private=False, metadata_uploaded_preserve=False):
+           private=False, metadata_uploaded_preserve=False,
+           charset='UTF-8'):
     """Upload a directory of spatial data files to GeoNode
 
        This function also verifies that each layer is in GeoServer.
@@ -669,38 +710,46 @@ def upload(incoming, user=None, overwrite=False,
                 if tarfile.is_tarfile(filename):
                     filename = extract_tarfile(filename)
 
-                layer = file_upload(filename,
-                                    name=name,
-                                    title=title,
-                                    abstract=abstract,
-                                    date=date,
-                                    user=user,
-                                    overwrite=overwrite,
-                                    license=license,
-                                    category=category,
-                                    keywords=keywords,
-                                    regions=regions,
-                                    metadata_uploaded_preserve=metadata_uploaded_preserve
-                                    )
+                layer = file_upload(
+                    filename,
+                    name=name,
+                    title=title,
+                    abstract=abstract,
+                    date=date,
+                    user=user,
+                    overwrite=overwrite,
+                    license=license,
+                    category=category,
+                    keywords=keywords,
+                    regions=regions,
+                    metadata_uploaded_preserve=metadata_uploaded_preserve,
+                    charset=charset)
                 if not existed:
                     status = 'created'
                 else:
                     status = 'updated'
                 if private and user:
-                    perm_spec = {"users": {"AnonymousUser": [],
-                                           user.username: ["change_resourcebase_metadata", "change_layer_data",
-                                                           "change_layer_style", "change_resourcebase",
-                                                           "delete_resourcebase", "change_resourcebase_permissions",
-                                                           "publish_resourcebase"]}, "groups": {}}
+                    perm_spec = {
+                        "users": {
+                            "AnonymousUser": [],
+                            user.username: [
+                                "change_resourcebase_metadata",
+                                "change_layer_data",
+                                "change_layer_style",
+                                "change_resourcebase",
+                                "delete_resourcebase",
+                                "change_resourcebase_permissions",
+                                "publish_resourcebase"]},
+                        "groups": {}}
                     layer.set_permissions(perm_spec)
 
                 if getattr(settings, 'SLACK_ENABLED', False):
                     try:
                         from geonode.contrib.slack.utils import build_slack_message_layer, send_slack_messages
-                        send_slack_messages(build_slack_message_layer(
-                            ("layer_new" if status == "created" else "layer_edit"),
-                            layer))
-                    except:
+                        send_slack_messages(
+                            build_slack_message_layer(
+                                ("layer_new" if status == "created" else "layer_edit"), layer))
+                    except BaseException:
                         print "Could not send slack message."
 
             except Exception as e:
@@ -734,7 +783,11 @@ def upload(incoming, user=None, overwrite=False,
 def create_thumbnail(instance, thumbnail_remote_url, thumbnail_create_url=None,
                      check_bbox=True, ogc_client=None, overwrite=False):
     thumbnail_dir = os.path.join(settings.MEDIA_ROOT, 'thumbs')
-    thumbnail_name = 'layer-%s-thumb.png' % instance.uuid
+    thumbnail_name = None
+    if isinstance(instance, Layer):
+        thumbnail_name = 'layer-%s-thumb.png' % instance.uuid
+    elif isinstance(instance, Map):
+        thumbnail_name = 'map-%s-thumb.png' % instance.uuid
     thumbnail_path = os.path.join(thumbnail_dir, thumbnail_name)
 
     if overwrite is True or storage.exists(thumbnail_name) is False:
@@ -771,10 +824,11 @@ def create_thumbnail(instance, thumbnail_remote_url, thumbnail_create_url=None,
                                            name="Remote Thumbnail",
                                            mime='image/png',
                                            link_type='image',
-                                           )
-                                       )
-            Layer.objects.filter(id=instance.id) \
+            )
+            )
+            ResourceBase.objects.filter(id=instance.id) \
                 .update(thumbnail_url=thumbnail_remote_url)
+
             # Download thumbnail and save it locally.
             resp, image = ogc_client.request(thumbnail_create_url)
             if 'ServiceException' in image or \
@@ -785,5 +839,17 @@ def create_thumbnail(instance, thumbnail_remote_url, thumbnail_create_url=None,
                 image = None
 
         if image is not None:
-            filename = 'layer-%s-thumb.png' % instance.uuid
-            instance.save_thumbnail(filename, image=image)
+            instance.save_thumbnail(thumbnail_name, image=image)
+
+
+def delete_orphaned_layers():
+    """Delete orphaned layer files."""
+    layer_path = os.path.join(settings.MEDIA_ROOT, 'layers')
+    for filename in os.listdir(layer_path):
+        fn = os.path.join(layer_path, filename)
+        if LayerFile.objects.filter(file__icontains=filename).count() == 0:
+            print 'Removing orphan layer file %s' % fn
+            try:
+                os.remove(fn)
+            except OSError:
+                print 'Could not delete file %s' % fn

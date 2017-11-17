@@ -27,7 +27,7 @@ from django.db import models
 from django.db.models import signals
 from django.contrib.contenttypes.models import ContentType
 from django.conf import settings
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import ugettext as _
 from django.core.urlresolvers import reverse
 from django.core.files.storage import FileSystemStorage
 
@@ -35,7 +35,9 @@ from geonode.base.models import ResourceBase, ResourceBaseManager, resourcebase_
 from geonode.people.utils import get_valid_user
 from agon_ratings.models import OverallRating
 from geonode.utils import check_shp_columnnames
-from geonode.security.models import remove_object_permissions
+from geonode.security.models import (
+    remove_object_permissions,
+    PermissionLevelMixin)
 
 logger = logging.getLogger("geonode.layers.models")
 
@@ -44,7 +46,7 @@ csv_exts = ['.csv']
 kml_exts = ['.kml']
 vec_exts = shp_exts + csv_exts + kml_exts
 
-cov_exts = ['.tif', '.tiff', '.geotiff', '.geotif']
+cov_exts = ['.tif', '.tiff', '.geotiff', '.geotif', '.asc']
 
 TIME_REGEX = (
     ('[0-9]{8}', _('YYYYMMDD')),
@@ -59,7 +61,7 @@ TIME_REGEX_FORMAT = {
 }
 
 
-class Style(models.Model):
+class Style(models.Model, PermissionLevelMixin):
 
     """Model for storing styles.
     """
@@ -79,14 +81,29 @@ class Style(models.Model):
 
     def absolute_url(self):
         if self.sld_url:
-            if self.sld_url.startswith(settings.OGC_SERVER['default']['LOCATION']):
-                return self.sld_url.split(settings.OGC_SERVER['default']['LOCATION'], 1)[1]
+            if self.sld_url.startswith(
+                    settings.OGC_SERVER['default']['LOCATION']):
+                return self.sld_url.split(
+                    settings.OGC_SERVER['default']['LOCATION'], 1)[1]
             elif self.sld_url.startswith(settings.OGC_SERVER['default']['PUBLIC_LOCATION']):
-                return self.sld_url.split(settings.OGC_SERVER['default']['PUBLIC_LOCATION'], 1)[1]
+                return self.sld_url.split(
+                    settings.OGC_SERVER['default']['PUBLIC_LOCATION'], 1)[1]
 
             return self.sld_url
         else:
-            logger.error("SLD URL is empty for Style %s" % self.name.encode('utf-8'))
+            logger.error(
+                "SLD URL is empty for Style %s" %
+                self.name.encode('utf-8'))
+            return None
+
+    def get_self_resource(self):
+        """Get associated resource base."""
+        # Associate this model with resource
+        try:
+            layer = self.layer_styles.first()
+            """:type: Layer"""
+            return layer.get_self_resource()
+        except:
             return None
 
 
@@ -113,7 +130,11 @@ class Layer(ResourceBase):
     is_mosaic = models.BooleanField(default=False)
     has_time = models.BooleanField(default=False)
     has_elevation = models.BooleanField(default=False)
-    time_regex = models.CharField(max_length=128, null=True, blank=True, choices=TIME_REGEX)
+    time_regex = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        choices=TIME_REGEX)
     elevation_regex = models.CharField(max_length=128, null=True, blank=True)
 
     default_style = models.ForeignKey(
@@ -177,7 +198,10 @@ class Layer(ResourceBase):
     @property
     def ows_url(self):
         if self.is_remote:
-            return self.service.base_url
+            if self.service and self.service.base_url:
+                return self.service.base_url
+            else:
+                return None
         else:
             return '{0}{1}/{2}/wms'.format(settings.OGC_SERVER['default']['PUBLIC_LOCATION'],
                                              self.workspace,
@@ -193,13 +217,13 @@ class Layer(ResourceBase):
     @property
     def service_typename(self):
         if self.is_remote:
-            return "%s:%s" % (self.service.name, self.typename)
+            return "%s:%s" % (self.service.name, self.alternate)
         else:
-            return self.typename
+            return self.alternate
 
     @property
     def attributes(self):
-        return self.attribute_set.exclude(attribute='the_geom')
+        return self.attribute_set.exclude(attribute='the_geom').order_by('display_order')
 
     def get_base_file(self):
         """Get the shp or geotiff file for this layer.
@@ -218,18 +242,21 @@ class Layer(ResourceBase):
         if base_files_count == 0:
             return None, None
 
-        msg = 'There should only be one main file (.shp or .geotiff), found %s' % base_files_count
+        msg = 'There should only be one main file (.shp or .geotiff or .asc), found %s' % base_files_count
         assert base_files_count == 1, msg
 
         # we need to check, for shapefile, if column names are valid
         list_col = None
         if self.storeType == 'dataStore':
-            valid_shp, wrong_column_name, list_col = check_shp_columnnames(self)
+            valid_shp, wrong_column_name, list_col = check_shp_columnnames(
+                self)
             if wrong_column_name:
                 msg = 'Shapefile has an invalid column name: %s' % wrong_column_name
             else:
                 msg = _('File cannot be opened, maybe check the encoding')
-            assert valid_shp, msg
+            # AF: Removing assertion since if the original file does not exists anymore
+            #     it won't be possible to update Metadata anymore
+            # assert valid_shp, msg
 
         # no error, let's return the base files
         return base_files.get(), list_col
@@ -249,7 +276,7 @@ class Layer(ResourceBase):
         return cfg
 
     def __str__(self):
-        if self.typename is not None:
+        if self.alternate is not None:
             return "%s Layer" % self.service_typename.encode('utf-8')
         elif self.name is not None:
             return "%s Layer" % self.name
@@ -273,7 +300,7 @@ class Layer(ResourceBase):
 
     def maps(self):
         from geonode.maps.models import MapLayer
-        return MapLayer.objects.filter(name=self.typename)
+        return MapLayer.objects.filter(name=self.alternate)
 
     @property
     def class_name(self):
@@ -286,8 +313,31 @@ class Layer(ResourceBase):
     @property
     def geogig_link(self):
         if(self.geogig_enabled):
-            return getattr(self.link_set.filter(name__icontains='clone in geogig').first(), 'url', None)
+            return getattr(
+                self.link_set.filter(
+                    name__icontains='clone in geogig').first(),
+                'url',
+                None)
         return None
+
+    def view_count_up(self, user, do_local=False):
+        """ increase view counter, if user is not owner and not super
+
+        @param user which views layer
+        @type User model
+
+        @param do_local - do local counter update even if pubsub is enabled
+        @type bool
+        """
+        if user == self.owner or user.is_superuser:
+            return
+        if not do_local:
+            from geonode.messaging import producer
+            producer.viewing_layer(str(user), str(self.owner), self.id)
+
+        else:
+            Layer.objects.filter(id=self.id)\
+                         .update(popular_count=models.F('popular_count') + 1)
 
 
 class UploadSession(models.Model):
@@ -312,8 +362,11 @@ class LayerFile(models.Model):
     upload_session = models.ForeignKey(UploadSession)
     name = models.CharField(max_length=255)
     base = models.BooleanField(default=False)
-    file = models.FileField(upload_to='layers',
-                            storage=FileSystemStorage(base_url=settings.LOCAL_MEDIA_URL),  max_length=255)
+    file = models.FileField(
+        upload_to='layers',
+        storage=FileSystemStorage(
+            base_url=settings.LOCAL_MEDIA_URL),
+        max_length=255)
 
 
 class AttributeManager(models.Manager):
@@ -373,10 +426,8 @@ class Attribute(models.Model):
         _('visible?'),
         help_text=_('specifies if the attribute should be displayed in identify results'),
         default=True)
-    display_order = models.IntegerField(
-        _('display order'),
-        help_text=_('specifies the order in which attribute should be displayed in identify results'),
-        default=1)
+    display_order = models.IntegerField(_('display order'), help_text=_(
+        'specifies the order in which attribute should be displayed in identify results'), default=1)
 
     # statistical derivations
     count = models.IntegerField(
@@ -436,10 +487,8 @@ class Attribute(models.Model):
         null=True,
         blank=True,
         default='NA')
-    last_stats_updated = models.DateTimeField(
-        _('last modified'),
-        default=datetime.now,
-        help_text=_('date when attribute statistics were last updated'))  # passing the method itself, not
+    last_stats_updated = models.DateTimeField(_('last modified'), default=datetime.now, help_text=_(
+        'date when attribute statistics were last updated'))  # passing the method itself, not
 
     objects = AttributeManager()
 
@@ -472,9 +521,12 @@ def pre_save_layer(instance, sender, **kwargs):
     if instance.uuid == '':
         instance.uuid = str(uuid.uuid1())
 
-    if instance.typename is None:
+    if instance.alternate is None:
         # Set a sensible default for the typename
-        instance.typename = 'geonode:%s' % instance.name
+        if instance.is_remote:
+            instance.alternate = instance.name
+        else:
+            instance.alternate = 'geonode:%s' % instance.name
 
     base_file, info = instance.get_base_file()
 
@@ -519,18 +571,18 @@ def pre_delete_layer(instance, sender, **kwargs):
         # we need to delete the maplayers here because in the post save layer.service is not available anymore
         # REFACTOR
         from geonode.maps.models import MapLayer
-        if instance.typename:
+        if instance.alternate:
             logger.debug(
                 "Going to delete associated maplayers for [%s]",
-                instance.typename.encode('utf-8'))
+                instance.alternate.encode('utf-8'))
             MapLayer.objects.filter(
-                name=instance.typename,
+                name=instance.alternate,
                 ows_url=instance.ows_url).delete()
         return
 
     logger.debug(
         "Going to delete the styles associated for [%s]",
-        instance.typename.encode('utf-8'))
+        instance.alternate.encode('utf-8'))
     ct = ContentType.objects.get_for_model(instance)
     OverallRating.objects.filter(
         content_type=ct,
@@ -554,18 +606,18 @@ def post_delete_layer(instance, sender, **kwargs):
         return
 
     from geonode.maps.models import MapLayer
-    if instance.typename:
+    if instance.alternate:
         logger.debug(
             "Going to delete associated maplayers for [%s]",
-            instance.typename.encode('utf-8'))
+            instance.alternate.encode('utf-8'))
         MapLayer.objects.filter(
-            name=instance.typename,
+            name=instance.alternate,
             ows_url=instance.ows_url).delete()
 
-    if instance.typename:
+    if instance.alternate:
         logger.debug(
             "Going to delete the default style for [%s]",
-            instance.typename.encode('utf-8'))
+            instance.alternate.encode('utf-8'))
 
     if instance.default_style and Layer.objects.filter(
             default_style__id=instance.default_style.id).count() == 0:
@@ -579,7 +631,17 @@ def post_delete_layer(instance, sender, **kwargs):
         pass
 
 
+def post_delete_layer_file(instance, sender, **kwargs):
+    """Delete associated file.
+
+    :param instance: LayerFile instance
+    :type instance: LayerFile
+    """
+    instance.file.delete(save=False)
+
+
 signals.pre_save.connect(pre_save_layer, sender=Layer)
 signals.post_save.connect(resourcebase_post_save, sender=Layer)
 signals.pre_delete.connect(pre_delete_layer, sender=Layer)
 signals.post_delete.connect(post_delete_layer, sender=Layer)
+signals.post_delete.connect(post_delete_layer_file, sender=LayerFile)

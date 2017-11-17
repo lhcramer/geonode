@@ -4,7 +4,7 @@
 {% load base_tags %}
 {% load guardian_tags %}
 
-{% block title %}{{ layer.typename }} — {{ block.super }}{% endblock %}
+{% block title %}{{ layer.alternate }} — {{ block.super }}{% endblock %}
 
 {% block body_class %}data{% endblock %}
 
@@ -13,13 +13,13 @@
 {{ block.super }}
 
 <div class="page-header">
-  <a href="{% url "layer_browse" %}" class="btn btn-primary pull-right">{% trans "Explore Layers" %}</a>
+  <a href="{% url "layer_browse" %}?limit={{ API_LIMIT_PER_PAGE }}" class="btn btn-primary pull-right">{% trans "Explore Layers" %}</a>
   <h2 class="page-title">{% trans "Edit Metadata" %}</h2>
 </div>
 <div class="row">
   <div class="col-md-8">
     <p class="lead">
-      {% blocktrans with layer.typename as layer_title %}
+      {% blocktrans with layer.alternate as layer_title %}
         Editing details for {{ layer_title }}
       {% endblocktrans %}
     </p>
@@ -68,7 +68,6 @@
           <input type="submit" id="btn_upd_md_up" class="btn btn-primary" value="{% trans "Update" %}"/>
         </div>
         {% endif %}
-
 
         {% csrf_token %}
         <div class="col-md-6 form-controls">
@@ -141,8 +140,4 @@
       </form>
   </div>
 </div>
-{% endblock %}
-{% block extra_script %}
-{{ block.super }}
- {% include 'metadata_form_js.html' %}
 {% endblock %}

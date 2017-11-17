@@ -21,6 +21,7 @@
 from django.contrib import admin
 
 from geonode.base.admin import MediaTranslationAdmin, ResourceBaseAdminForm
+from geonode.base.admin import metadata_batch_edit
 from geonode.layers.models import Layer, Attribute, Style
 from geonode.layers.models import LayerFile, UploadSession
 from geonode.tasks.update import fix_layer_thumbnail
@@ -52,23 +53,41 @@ class LayerAdminForm(ResourceBaseAdminForm):
 class LayerAdmin(MediaTranslationAdmin):
     list_display = (
         'id',
-        'typename',
+        'alternate',
         'service_type',
         'title',
         'date',
         'category',
+<<<<<<< HEAD
         'is_published')
     list_display_links = ('id',)
     list_editable = ('title', 'category', 'is_published')
     list_filter = ('owner', 'category',
                    'restriction_code_type__identifier', 'date', 'date_type')
     search_fields = ('typename', 'title', 'abstract', 'purpose',)
+=======
+        'group',
+        'is_approved',
+        'is_published',
+        'metadata_completeness')
+    list_display_links = ('id',)
+    list_editable = ('title', 'category', 'group', 'is_approved', 'is_published')
+    list_filter = ('storeType', 'owner', 'category', 'group',
+                   'restriction_code_type__identifier', 'date', 'date_type',
+                   'is_approved', 'is_published')
+    search_fields = ('alternate', 'title', 'abstract', 'purpose',
+                     'is_approved', 'is_published',)
+>>>>>>> e7605f5980062789a1dfe0321b74882a9af32ed6
     filter_horizontal = ('contacts',)
     date_hierarchy = 'date'
-    readonly_fields = ('uuid', 'typename', 'workspace')
+    readonly_fields = ('uuid', 'alternate', 'workspace')
     inlines = [AttributeInline]
     form = LayerAdminForm
+<<<<<<< HEAD
     actions = [fix_thumbnail]
+=======
+    actions = [metadata_batch_edit]
+>>>>>>> e7605f5980062789a1dfe0321b74882a9af32ed6
 
 
 class AttributeAdmin(admin.ModelAdmin):

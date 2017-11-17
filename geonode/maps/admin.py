@@ -18,10 +18,11 @@
 #
 #########################################################################
 
-import autocomplete_light
+from autocomplete_light.forms import modelform_factory
 
 from geonode.maps.models import Map, MapLayer, MapSnapshot, MapStory
 from geonode.base.admin import MediaTranslationAdmin, ResourceBaseAdminForm
+from geonode.base.admin import metadata_batch_edit
 from django.contrib import admin
 
 
@@ -51,6 +52,7 @@ class MapAdmin(MediaTranslationAdmin):
     inlines = [MapLayerInline, ]
     list_display_links = ('title',)
 <<<<<<< HEAD
+<<<<<<< HEAD
     list_display = ('id', 'title', 'owner', 'is_published', 'featured',)
     list_filter = ('owner', 'category', 'featured', 'is_published',)
 =======
@@ -59,7 +61,16 @@ class MapAdmin(MediaTranslationAdmin):
     list_filter = ('owner', 'category',)
 >>>>>>> 2c522ce5efd5757f4d94e63a543e24e9ac97805b
     search_fields = ('title', 'abstract', 'purpose',)
+=======
+    list_display = ('id', 'title', 'owner', 'category', 'group', 'is_approved', 'is_published', 'featured',)
+    list_editable = ('owner', 'category', 'group', 'is_approved', 'is_published', 'featured',)
+    list_filter = ('owner', 'category', 'group', 'featured',
+                   'is_approved', 'is_published',)
+    search_fields = ('title', 'abstract', 'purpose',
+                     'is_approved', 'is_published',)
+>>>>>>> e7605f5980062789a1dfe0321b74882a9af32ed6
     form = MapAdminForm
+    actions = [metadata_batch_edit]
 
 
 class MapStoryAdmin(MediaTranslationAdmin):
@@ -75,7 +86,7 @@ class MapLayerAdmin(admin.ModelAdmin):
     list_display = ('id', 'map', 'name')
     list_filter = ('map',)
     search_fields = ('map__title', 'name',)
-    form = autocomplete_light.modelform_factory(MapLayer, fields='__all__')
+    form = modelform_factory(MapLayer, fields='__all__')
 
 <<<<<<< HEAD
 
